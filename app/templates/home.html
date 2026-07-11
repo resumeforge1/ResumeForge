@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - ResumeForge{% endblock %}
+{% block content %}
+<section class="hero panel">
+  <div>
+    <p class="eyebrow">Client workspace</p>
+    <h1>ResumeForge CRM</h1>
+    <p class="lede">Manage clients, import resumes, analyze job descriptions, and generate complete application packages.</p>
+  </div>
+  <div class="actions">
+    <a class="button primary" href="/clients/new">Start Intake</a>
+    <a class="button" href="/clients/new?sample=true">Use Alfredo Sample</a>
+    <form method="post" action="/clients/sample">
+      <button type="submit" class="button ghost">Create Sample Client</button>
+    </form>
+    <form method="post" action="/seed/demo">
+      <button type="submit" class="button ghost">Seed Demo Data</button>
+    </form>
+  </div>
+</section>
+
+<section class="workspace">
+  <div class="section-heading">
+    <h2>AI Import</h2>
+    <span>PDF or DOCX</span>
+  </div>
+  <form class="inline-form" method="post" action="/clients/import" enctype="multipart/form-data">
+    <input type="file" name="resume_file" accept=".pdf,.docx" required>
+    <button class="button primary" type="submit">Import Resume</button>
+  </form>
+</section>
+
+<section class="workspace">
+  <div class="section-heading">
+    <h2>Clients</h2>
+    <span>{{ clients|length }} active</span>
+  </div>
+  <form class="inline-form" method="get" action="/">
+    <input name="q" value="{{ query }}" placeholder="Search clients, email, role">
+    <button class="button" type="submit">Search</button>
+  </form>
+  {% if clients %}
+    <div class="client-list">
+      {% for client in clients %}
+        <article class="client-row">
+          <div>
+            <strong>{{ client.full_name }}</strong>
+            <span>{{ client.target_role }} | {{ client.status }} | {{ client.template_key|upper }}</span>
+          </div>
+          <div class="row-actions">
+            <a href="/clients/{{ client.id }}">CRM</a>
+            <a href="/clients/{{ client.id }}/preview">Preview</a>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="empty">No active clients found.</p>
+  {% endif %}
+</section>
+{% endblock %}

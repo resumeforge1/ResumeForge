@@ -1,0 +1,17 @@
+{
+  "key": "general",
+  "label": "General Professional",
+  "resume_template": "resumes/general.html",
+  "experience_heading": "Professional Experience",
+  "core_strengths": [
+    "Client Communication",
+    "Operations Support",
+    "Process Improvement",
+    "Team Collaboration",
+    "Documentation",
+    "Problem Solving",
+    "Time Management",
+    "Quality Control",
+    "Service Delivery"
+  ]
+}

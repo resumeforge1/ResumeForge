@@ -1,0 +1,25 @@
+{
+  "provider": "mock",
+  "providers": {
+    "mock": {
+      "enabled": true
+    },
+    "openai": {
+      "enabled": false,
+      "model": "gpt-4.1-mini"
+    },
+    "anthropic": {
+      "enabled": false,
+      "model": "claude-3-5-sonnet-latest"
+    },
+    "gemini": {
+      "enabled": false,
+      "model": "gemini-1.5-pro"
+    },
+    "ollama": {
+      "enabled": false,
+      "model": "llama3.1",
+      "base_url": "http://localhost:11434"
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "key": "healthcare",
+  "label": "Healthcare",
+  "resume_template": "resumes/general.html",
+  "layout": "clinical-clean",
+  "colors": {"accent": "#16756f", "header": "#16756f"},
+  "fonts": {"primary": "Arial", "heading": "Arial"},
+  "cover_letter": "healthcare_cover_letter",
+  "linkedin": "healthcare_linkedin",
+  "interview": "healthcare_interview",
+  "ats_keywords": ["Patient Care", "HIPAA", "Clinical Documentation", "Care Coordination"],
+  "experience_heading": "Healthcare Experience",
+  "core_strengths": ["Patient Care", "HIPAA Compliance", "Clinical Documentation", "Care Coordination", "Scheduling", "Quality Standards"]
+}

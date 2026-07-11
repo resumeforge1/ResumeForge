@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}New Client - ResumeForge{% endblock %}
+{% block content %}
+<section class="intake-layout">
+  <div class="form-shell">
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow">Client intake</p>
+        <h1>New Resume Package</h1>
+      </div>
+      <a class="button" href="/">Back</a>
+    </div>
+
+    <form class="intake-form" id="intake-form" method="post" action="/clients">
+      <section class="form-section">
+        <h2>Template</h2>
+        <div class="segmented">
+          {% for industry_template in industry_templates %}
+            <label>
+              <input type="radio" name="template_key" value="{{ industry_template.key }}" {% if client.template_key == industry_template.key %}checked{% endif %}>
+              <span>{{ industry_template.label }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="form-section grid two">
+        <label>Full name<input required name="full_name" value="{{ client.full_name }}"></label>
+        <label>City/state<input name="city_state" value="{{ client.city_state }}"></label>
+        <label>Phone<input name="phone" value="{{ client.phone }}"></label>
+        <label>Email<input type="email" name="email" value="{{ client.email }}"></label>
+        <label class="wide">Target role<input name="target_role" value="{{ client.target_role }}"></label>
+        <label class="wide">Professional summary<textarea name="professional_summary" rows="5">{{ client.professional_summary }}</textarea></label>
+      </section>
+
+      <section class="form-section grid two">
+        <label>Licenses/certifications<textarea name="certifications" rows="5">{{ client.certifications|join('\n') }}</textarea></label>
+        <label>Skills<textarea name="skills" rows="5">{{ client.skills|join('\n') }}</textarea></label>
+        <label class="wide">Education<textarea name="education" rows="4">{{ client.education|join('\n') }}</textarea></label>
+      </section>
+
+      <section class="form-section">
+        <div class="section-heading compact">
+          <h2>Work Experience</h2>
+          <button class="button" type="button" id="add-job">Add Job</button>
+        </div>
+        <div id="jobs">
+          {% for job in client.work_experience %}
+            <div class="job-block">
+              <div class="job-tools">
+                <strong>Experience {{ loop.index }}</strong>
+                <button class="button ghost remove-job" type="button">Remove</button>
+              </div>
+              <div class="grid two">
+                <label>Employer<input name="employer" value="{{ job.employer }}"></label>
+                <label>Job title<input name="job_title" value="{{ job.job_title }}"></label>
+                <label>Start date<input name="start_date" value="{{ job.start_date }}"></label>
+                <label>End date<input name="end_date" value="{{ job.end_date }}"></label>
+                <label class="wide">Bullet points<textarea name="bullets" rows="5">{{ job.bullets|join('\n') }}</textarea></label>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </section>
+
+      <div class="submit-bar">
+        <button class="button primary" type="submit">Save and Preview</button>
+      </div>
+    </form>
+  </div>
+
+  <aside class="live-panel">
+    <div class="section-heading compact">
+      <div>
+        <p class="eyebrow">Live preview</p>
+        <h2>Premium PDF</h2>
+      </div>
+    </div>
+    <div class="paper-preview live">
+      <iframe id="live-preview" title="Live resume preview" srcdoc="{{ resume_html|e }}"></iframe>
+    </div>
+  </aside>
+</section>
+<script src="/static/app.js"></script>
+{% endblock %}

@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <style>
+      @page { size: Letter; margin: 0; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        color: #1d2733;
+        font-family: Arial, Helvetica, sans-serif;
+        background: white;
+      }
+      .resume {
+        width: 8.5in;
+        min-height: 11in;
+        padding: 0.42in 0.52in 0.46in;
+      }
+      .header {
+        background: #145a92;
+        color: white;
+        padding: 22px 26px;
+        margin: -0.42in -0.52in 22px;
+      }
+      .header h1 {
+        font-size: 30px;
+        line-height: 1;
+        margin: 0 0 8px;
+        letter-spacing: 0;
+      }
+      .target {
+        font-size: 14px;
+        font-weight: 700;
+        margin: 0 0 8px;
+        text-transform: uppercase;
+      }
+      .contact {
+        font-size: 11px;
+        opacity: 0.96;
+      }
+      .section {
+        margin: 0 0 14px;
+      }
+      h2 {
+        color: #145a92;
+        border-bottom: 1px solid #b9cde0;
+        font-size: 12px;
+        margin: 0 0 7px;
+        padding-bottom: 4px;
+        text-transform: uppercase;
+        letter-spacing: 0;
+      }
+      p {
+        font-size: 10.5px;
+        line-height: 1.42;
+        margin: 0;
+      }
+      .strengths {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 6px 10px;
+      }
+      .strength {
+        border-left: 3px solid #145a92;
+        background: #eef5fb;
+        color: #223244;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 6px 8px;
+      }
+      .skills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+      }
+      .skill {
+        border: 1px solid #cfd9e3;
+        color: #27384a;
+        font-size: 9.5px;
+        padding: 4px 7px;
+      }
+      .job {
+        margin-bottom: 10px;
+      }
+      .job-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 3px;
+      }
+      .job-title {
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .dates {
+        color: #5c6976;
+        font-size: 10px;
+        white-space: nowrap;
+      }
+      .employer {
+        color: #415163;
+        font-size: 10.5px;
+        font-weight: 700;
+        margin-bottom: 3px;
+      }
+      ul {
+        margin: 0;
+        padding-left: 16px;
+      }
+      li {
+        font-size: 10px;
+        line-height: 1.35;
+        margin-bottom: 2px;
+      }
+      .columns {
+        display: grid;
+        grid-template-columns: 1.2fr 0.8fr;
+        gap: 22px;
+      }
+    </style>
+  </head>
+  <body>
+    <article class="resume">
+      <header class="header">
+        <h1>{{ client.full_name }}</h1>
+        <p class="target">{{ client.target_role }}</p>
+        <div class="contact">{{ [client.city_state, client.phone, client.email]|select|join(' · ') }}</div>
+      </header>
+      {% block resume_content %}{% endblock %}
+    </article>
+  </body>
+</html>

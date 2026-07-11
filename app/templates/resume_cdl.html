@@ -1,0 +1,62 @@
+{% extends "resume_base.html" %}
+{% block resume_content %}
+<section class="section">
+  <h2>Professional Summary</h2>
+  <p>{{ client.professional_summary }}</p>
+</section>
+<section class="section">
+  <h2>Core Strengths</h2>
+  <div class="strengths">
+    {% for strength in client.core_strengths %}
+      <div class="strength">{{ strength }}</div>
+    {% endfor %}
+  </div>
+</section>
+<section class="columns">
+  <div>
+    <section class="section">
+      <h2>Professional Experience</h2>
+      {% for job in client.work_experience %}
+        <div class="job">
+          <div class="job-head">
+            <div class="job-title">{{ job.job_title }}</div>
+            <div class="dates">{{ job.start_date }} - {{ job.end_date }}</div>
+          </div>
+          <div class="employer">{{ job.employer }}</div>
+          <ul>
+            {% for bullet in job.bullets %}
+              <li>{{ bullet }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endfor %}
+    </section>
+  </div>
+  <div>
+    <section class="section">
+      <h2>Licenses & Certifications</h2>
+      <ul>
+        {% for item in client.certifications %}
+          <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    </section>
+    <section class="section">
+      <h2>Skills</h2>
+      <div class="skills">
+        {% for skill in client.skills %}
+          <span class="skill">{{ skill }}</span>
+        {% endfor %}
+      </div>
+    </section>
+    <section class="section">
+      <h2>Education</h2>
+      <ul>
+        {% for item in client.education %}
+          <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    </section>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Template Marketplace - ResumeForge{% endblock %}
+{% block content %}
+<section class="panel">
+  <p class="eyebrow">Template marketplace</p>
+  <h1>Industry Templates</h1>
+  <p class="lede">Each template is independently configured with layout, colors, fonts, prompts, keywords, cover letter, LinkedIn, and interview assets.</p>
+</section>
+<section class="download-grid">
+  {% for item in industry_templates %}
+    <article class="download-card">
+      <span>{{ item.key }}</span>
+      <strong>{{ item.label }}</strong>
+      <small>{{ item.layout }}</small>
+    </article>
+  {% endfor %}
+</section>
+<section class="workspace">
+  <h2>Plugins</h2>
+  {% if plugins %}
+    {% for plugin in plugins %}<p class="note">{{ plugin.name }} - {{ plugin.description }}</p>{% endfor %}
+  {% else %}
+    <p class="empty">No plugins installed yet. Add plugin manifests under /plugins.</p>
+  {% endif %}
+</section>
+{% endblock %}

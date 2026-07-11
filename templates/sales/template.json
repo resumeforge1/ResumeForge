@@ -1,0 +1,14 @@
+{
+  "key": "sales",
+  "label": "Sales",
+  "resume_template": "resumes/general.html",
+  "layout": "revenue-clean",
+  "colors": {"accent": "#8a4f19", "header": "#8a4f19"},
+  "fonts": {"primary": "Arial", "heading": "Arial"},
+  "cover_letter": "sales_cover_letter",
+  "linkedin": "sales_linkedin",
+  "interview": "sales_interview",
+  "ats_keywords": ["Pipeline", "CRM", "Prospecting", "Closing", "Account Management"],
+  "experience_heading": "Sales Experience",
+  "core_strengths": ["Prospecting", "CRM Management", "Pipeline Development", "Closing", "Account Management", "Customer Retention"]
+}

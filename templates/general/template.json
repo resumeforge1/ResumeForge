@@ -1,0 +1,36 @@
+{
+  "key": "general",
+  "label": "General Professional",
+  "resume_template": "resumes/general.html",
+  "layout": "two-column-compact",
+  "colors": {
+    "accent": "#145a92",
+    "header": "#145a92"
+  },
+  "fonts": {
+    "primary": "Arial",
+    "heading": "Arial"
+  },
+  "cover_letter": "general_cover_letter",
+  "linkedin": "general_linkedin",
+  "interview": "general_interview",
+  "ats_keywords": [
+    "Communication",
+    "Operations",
+    "Leadership",
+    "Documentation",
+    "Customer Service"
+  ],
+  "experience_heading": "Professional Experience",
+  "core_strengths": [
+    "Client Communication",
+    "Operations Support",
+    "Process Improvement",
+    "Team Collaboration",
+    "Documentation",
+    "Problem Solving",
+    "Time Management",
+    "Quality Control",
+    "Service Delivery"
+  ]
+}

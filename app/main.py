@@ -1,0 +1,445 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+import json
+import logging
+
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+
+from app.core.config import load_ai_config
+from app.core.version import get_version
+from app.database import DB_PATH, get_connection, init_db, list_clients, save_client
+from app.document_generator import OUTPUT_DIR, generate_output, generate_outputs, render_resume_html
+from app.repositories.application_repository import ApplicationRepository
+from app.repositories.client_repository import ClientRepository
+from app.repositories.settings_repository import SettingsRepository
+from app.sample_data import SAMPLE_ALFREDO_CRUZ_CDL
+from app.services.dashboard_service import client_timeline, dashboard_stats, generated_files_for_client
+from app.services.import_engine import extract_resume
+from app.services.job_analyzer import analyze_job_description
+from app.services.plugin_service import discover_plugins
+from app.services.rewrite_engine import improve_experience, improve_skills, improve_summary
+from app.services.seed_data import seed_demo_data
+from app.template_registry import list_template_configs
+
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+logger = logging.getLogger("resumeforge")
+logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
+
+app = FastAPI(title="ResumeForge")
+templates = Jinja2Templates(directory=str(BASE_DIR / "app" / "templates"))
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), name="static")
+app.mount("/outputs", StaticFiles(directory=str(OUTPUT_DIR)), name="outputs")
+client_repo = ClientRepository()
+application_repo = ApplicationRepository()
+settings_repo = SettingsRepository()
+
+
+@app.on_event("startup")
+def startup() -> None:
+    init_db()
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    template_count = len(list_template_configs())
+    ai_config = load_ai_config()
+    logger.info("ResumeForge version: %s", get_version())
+    logger.info("Database path: %s", DB_PATH)
+    logger.info("Templates loaded: %s", template_count)
+    logger.info("Mock AI provider active: %s", ai_config.get("provider") == "mock")
+
+
+@app.get("/health")
+def health() -> dict[str, Any]:
+    database_ok = True
+    database_error = None
+    try:
+        with get_connection() as conn:
+            conn.execute("SELECT 1").fetchone()
+    except Exception as exc:
+        database_ok = False
+        database_error = str(exc)
+    return {
+        "status": "ok" if database_ok else "degraded",
+        "version": get_version(),
+        "database": {
+            "ok": database_ok,
+            "path": str(DB_PATH),
+            "error": database_error,
+        },
+        "templates": {
+            "count": len(list_template_configs()),
+        },
+    }
+
+
+@app.get("/", response_class=HTMLResponse)
+def home(request: Request) -> HTMLResponse:
+    query = request.query_params.get("q", "")
+    return templates.TemplateResponse(
+        "home.html",
+        {
+            "request": request,
+            "clients": client_repo.search(query),
+            "query": query,
+            "sample": SAMPLE_ALFREDO_CRUZ_CDL,
+            "industry_templates": list_template_configs(),
+            "settings": settings_repo.get(),
+            "stats": dashboard_stats(),
+        },
+    )
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+def dashboard(request: Request) -> HTMLResponse:
+    return home(request)
+
+
+@app.get("/clients/new", response_class=HTMLResponse)
+def new_client(request: Request, sample: bool = False) -> HTMLResponse:
+    client = SAMPLE_ALFREDO_CRUZ_CDL if sample else empty_client()
+    return templates.TemplateResponse(
+        "intake.html",
+        {
+            "request": request,
+            "client": client,
+            "resume_html": render_resume_html(client),
+            "industry_templates": list_template_configs(),
+        },
+    )
+
+
+@app.post("/clients/import", response_class=HTMLResponse)
+async def import_client_resume(request: Request, resume_file: UploadFile = File(...)) -> HTMLResponse:
+    upload_dir = BASE_DIR / "data" / "uploads"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    suffix = Path(resume_file.filename or "").suffix.lower()
+    if suffix not in {".pdf", ".docx"}:
+        raise HTTPException(status_code=400, detail="Upload a PDF or DOCX resume.")
+    path = upload_dir / f"import-{resume_file.filename}"
+    path.write_bytes(await resume_file.read())
+    client = extract_resume(path)
+    return templates.TemplateResponse(
+        "intake.html",
+        {
+            "request": request,
+            "client": client,
+            "resume_html": render_resume_html(client),
+            "industry_templates": list_template_configs(),
+        },
+    )
+
+
+@app.post("/clients", response_class=HTMLResponse)
+async def create_client(request: Request) -> RedirectResponse:
+    form = await request.form()
+    data = parse_intake_form(form)
+    if not data["full_name"]:
+        raise HTTPException(status_code=400, detail="Full name is required.")
+    client_id = save_client(data)
+    return RedirectResponse(url=f"/clients/{client_id}/preview", status_code=303)
+
+
+@app.post("/preview/live", response_class=HTMLResponse)
+async def live_preview(request: Request) -> HTMLResponse:
+    form = await request.form()
+    client = parse_intake_form(form)
+    client["full_name"] = client["full_name"] or "Client Name"
+    client["target_role"] = client["target_role"] or "Target Role"
+    return HTMLResponse(render_resume_html(client))
+
+
+@app.post("/clients/sample")
+def create_sample_client() -> RedirectResponse:
+    client_id = save_client(SAMPLE_ALFREDO_CRUZ_CDL)
+    return RedirectResponse(url=f"/clients/{client_id}/preview", status_code=303)
+
+
+@app.post("/seed/demo")
+def seed_demo() -> RedirectResponse:
+    client_id = seed_demo_data()
+    return RedirectResponse(url=f"/clients/{client_id}", status_code=303)
+
+
+@app.get("/clients/{client_id}", response_class=HTMLResponse)
+def client_detail(request: Request, client_id: int) -> HTMLResponse:
+    client = require_client(client_id)
+    files = generated_files_for_client(client_id)
+    return templates.TemplateResponse(
+        "client_detail.html",
+        {
+            "request": request,
+            "client": client,
+            "notes": client_repo.notes(client_id),
+            "versions": client_repo.versions(client_id),
+            "applications": application_repo.list_for_client(client_id),
+            "files": files,
+            "timeline": client_timeline(client_id),
+        },
+    )
+
+
+@app.post("/clients/{client_id}/notes")
+async def add_client_note(client_id: int, request: Request) -> RedirectResponse:
+    form = await request.form()
+    client_repo.add_note(client_id, str(form.get("note", "")))
+    return RedirectResponse(url=f"/clients/{client_id}", status_code=303)
+
+
+@app.post("/clients/{client_id}/applications")
+async def add_application(client_id: int, request: Request) -> RedirectResponse:
+    form = await request.form()
+    application_repo.create(client_id, {key: str(value) for key, value in form.items()})
+    return RedirectResponse(url=f"/clients/{client_id}", status_code=303)
+
+
+@app.post("/clients/{client_id}/applications/{application_id}/edit")
+async def edit_application(client_id: int, application_id: int, request: Request) -> RedirectResponse:
+    form = await request.form()
+    application_repo.update(application_id, {key: str(value) for key, value in form.items()})
+    return RedirectResponse(url=f"/clients/{client_id}", status_code=303)
+
+
+@app.post("/clients/{client_id}/applications/{application_id}/delete")
+def delete_application(client_id: int, application_id: int) -> RedirectResponse:
+    application_repo.delete(application_id)
+    return RedirectResponse(url=f"/clients/{client_id}", status_code=303)
+
+
+@app.post("/clients/{client_id}/duplicate")
+def duplicate_client(client_id: int) -> RedirectResponse:
+    new_id = client_repo.duplicate(client_id)
+    return RedirectResponse(url=f"/clients/{new_id}/preview", status_code=303)
+
+
+@app.post("/clients/{client_id}/archive")
+def archive_client(client_id: int) -> RedirectResponse:
+    client_repo.set_archived(client_id, True)
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/clients/{client_id}/restore")
+def restore_client(client_id: int) -> RedirectResponse:
+    client_repo.restore(client_id)
+    return RedirectResponse(url=f"/clients/{client_id}", status_code=303)
+
+
+@app.post("/clients/{client_id}/delete")
+def delete_client(client_id: int) -> RedirectResponse:
+    client_repo.soft_delete(client_id)
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.get("/clients/{client_id}/preview", response_class=HTMLResponse)
+def preview_client(request: Request, client_id: int) -> HTMLResponse:
+    client = require_client(client_id)
+    resume_html = render_resume_html(client)
+    template_previews = []
+    for template_config in list_template_configs():
+        preview_client_data = dict(client)
+        preview_client_data["template_key"] = template_config["key"]
+        template_previews.append(
+            {
+                "key": template_config["key"],
+                "label": template_config["label"],
+                "html": render_resume_html(preview_client_data),
+            }
+        )
+    return templates.TemplateResponse(
+        "preview.html",
+        {
+            "request": request,
+            "client": client,
+            "resume_html": resume_html,
+            "industry_templates": list_template_configs(),
+            "template_previews": template_previews,
+        },
+    )
+
+
+@app.post("/clients/{client_id}/analyze", response_class=HTMLResponse)
+async def analyze_client_job(request: Request, client_id: int) -> HTMLResponse:
+    client = require_client(client_id)
+    form = await request.form()
+    job_description = str(form.get("job_description", ""))
+    result = analyze_job_description(job_description, client)
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT INTO jd_analyses (client_id, job_description, result) VALUES (?, ?, ?)",
+            (client_id, job_description, json.dumps(result)),
+        )
+        conn.commit()
+    return templates.TemplateResponse(
+        "analysis.html",
+        {"request": request, "client": client, "job_description": job_description, "result": result},
+    )
+
+
+@app.post("/clients/{client_id}/rewrite/{rewrite_type}")
+def rewrite_client_section(client_id: int, rewrite_type: str) -> RedirectResponse:
+    client = require_client(client_id)
+    if rewrite_type == "summary":
+        client["professional_summary"] = improve_summary(client)
+    elif rewrite_type == "experience":
+        client["work_experience"] = improve_experience(client)
+    elif rewrite_type == "skills":
+        client["skills"] = improve_skills(client)
+    elif rewrite_type == "cover_letter":
+        pass
+    else:
+        raise HTTPException(status_code=404, detail="Rewrite type not found.")
+    client_repo.update(client_id, client, f"AI rewrite: {rewrite_type}")
+    return RedirectResponse(url=f"/clients/{client_id}/preview", status_code=303)
+
+
+@app.post("/clients/{client_id}/generate")
+def generate_client_files(client_id: int) -> RedirectResponse:
+    client = require_client(client_id)
+    generate_outputs(client)
+    return RedirectResponse(url=f"/clients/{client_id}/download", status_code=303)
+
+
+@app.get("/clients/{client_id}/download", response_class=HTMLResponse)
+def download_page(request: Request, client_id: int) -> HTMLResponse:
+    client = require_client(client_id)
+    files = generate_outputs(client)
+    return templates.TemplateResponse(
+        "download.html",
+        {
+            "request": request,
+            "client": client,
+            "files": files,
+            "generated_files": generated_files_for_client(client_id),
+        },
+    )
+
+
+@app.get("/clients/{client_id}/export/{export_type}")
+def export_client_file(client_id: int, export_type: str) -> Response:
+    client = require_client(client_id)
+    try:
+        filename = generate_output(client, export_type)
+    except ValueError:
+        return HTMLResponse("<h1>Export failed</h1><p>Export type not found.</p>", status_code=404)
+    except Exception as exc:
+        return HTMLResponse(
+            f"<h1>Export failed</h1><p>{str(exc)}</p><p>Try again or check server logs.</p>",
+            status_code=500,
+        )
+    return download_file(filename)
+
+
+@app.get("/marketplace", response_class=HTMLResponse)
+def marketplace(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        "marketplace.html",
+        {
+            "request": request,
+            "industry_templates": list_template_configs(),
+            "plugins": discover_plugins(),
+        },
+    )
+
+
+@app.get("/settings", response_class=HTMLResponse)
+def settings(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse("settings.html", {"request": request, "settings": settings_repo.get()})
+
+
+@app.post("/settings")
+async def update_settings(request: Request) -> RedirectResponse:
+    form = await request.form()
+    settings_repo.update({key: str(value) for key, value in form.items()})
+    return RedirectResponse(url="/settings", status_code=303)
+
+
+@app.get("/download/{filename}")
+def download_file(filename: str) -> FileResponse:
+    path = (OUTPUT_DIR / filename).resolve()
+    if not path.exists() or path.parent != OUTPUT_DIR.resolve():
+        raise HTTPException(status_code=404, detail="File not found.")
+    return FileResponse(path, filename=filename)
+
+
+def require_client(client_id: int) -> dict[str, Any]:
+    client = client_repo.get(client_id)
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found.")
+    return client
+
+
+def empty_client() -> dict[str, Any]:
+    return {
+        "template_key": "general",
+        "full_name": "",
+        "city_state": "",
+        "phone": "",
+        "email": "",
+        "target_role": "",
+        "professional_summary": "",
+        "certifications": [""],
+        "skills": [""],
+        "work_experience": [
+            {
+                "employer": "",
+                "job_title": "",
+                "start_date": "",
+                "end_date": "",
+                "bullets": [""],
+            }
+        ],
+        "education": [""],
+        "status": "Draft",
+        "notes": "",
+    }
+
+
+def parse_intake_form(form: Any) -> dict[str, Any]:
+    work_experience = []
+    employers = form.getlist("employer")
+    job_titles = form.getlist("job_title")
+    start_dates = form.getlist("start_date")
+    end_dates = form.getlist("end_date")
+    bullet_groups = form.getlist("bullets")
+
+    for index, employer in enumerate(employers):
+        bullets = split_lines(bullet_groups[index] if index < len(bullet_groups) else "")
+        job = {
+            "employer": employer.strip(),
+            "job_title": value_at(job_titles, index),
+            "start_date": value_at(start_dates, index),
+            "end_date": value_at(end_dates, index),
+            "bullets": bullets,
+        }
+        if any([job["employer"], job["job_title"], job["start_date"], job["end_date"], bullets]):
+            work_experience.append(job)
+
+    return {
+        "template_key": form.get("template_key", "general"),
+        "full_name": form.get("full_name", "").strip(),
+        "city_state": form.get("city_state", "").strip(),
+        "phone": form.get("phone", "").strip(),
+        "email": form.get("email", "").strip(),
+        "target_role": form.get("target_role", "").strip(),
+        "professional_summary": form.get("professional_summary", "").strip(),
+        "certifications": split_lines(form.get("certifications", "")),
+        "skills": split_lines(form.get("skills", "")),
+        "work_experience": work_experience,
+        "education": split_lines(form.get("education", "")),
+        "status": form.get("status", "Draft"),
+        "notes": form.get("notes", ""),
+    }
+
+
+def split_lines(value: str) -> list[str]:
+    return [line.strip(" -\t") for line in value.splitlines() if line.strip(" -\t")]
+
+
+def value_at(values: list[str], index: int) -> str:
+    if index >= len(values):
+        return ""
+    return values[index].strip()

@@ -1,0 +1,41 @@
+{
+  "key": "cdl",
+  "label": "CDL Driver",
+  "resume_template": "resumes/cdl.html",
+  "layout": "two-column-compact",
+  "colors": {
+    "accent": "#0f5792",
+    "header": "#0f5792"
+  },
+  "fonts": {
+    "primary": "Arial",
+    "heading": "Arial"
+  },
+  "cover_letter": "cdl_cover_letter",
+  "linkedin": "cdl_linkedin",
+  "interview": "cdl_interview",
+  "ats_keywords": [
+    "CDL Class A",
+    "DOT Compliance",
+    "OTR",
+    "Local Routes",
+    "Intermodal",
+    "LTL",
+    "Refrigerated Freight",
+    "Roll-off",
+    "Ready-mix",
+    "ELD"
+  ],
+  "experience_heading": "Commercial Driving Experience",
+  "core_strengths": [
+    "CDL Class A Operations",
+    "OTR and Local Routes",
+    "Intermodal Freight",
+    "Roll-off and Ready-mix",
+    "Refrigerated Food Distribution",
+    "LTL Delivery",
+    "DOT Compliance",
+    "ELD Documentation",
+    "Load Securement"
+  ]
+}

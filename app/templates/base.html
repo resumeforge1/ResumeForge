@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}ResumeForge{% endblock %}</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="/">ResumeForge</a>
+        <nav class="nav-stack">
+          <a href="/">Dashboard</a>
+          <a href="/clients/new">New Intake</a>
+          <a href="/marketplace">Templates</a>
+          <a href="/settings">Settings</a>
+        </nav>
+        <div class="sidebar-foot">Mock AI provider active</div>
+      </aside>
+      <main class="page">
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+  </body>
+</html>

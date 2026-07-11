@@ -1,0 +1,17 @@
+{
+  "key": "cdl",
+  "label": "CDL Driver",
+  "resume_template": "resumes/cdl.html",
+  "experience_heading": "Commercial Driving Experience",
+  "core_strengths": [
+    "CDL Class A Operations",
+    "OTR and Local Routes",
+    "Intermodal Freight",
+    "Roll-off and Ready-mix",
+    "Refrigerated Food Distribution",
+    "LTL Delivery",
+    "DOT Compliance",
+    "ELD Documentation",
+    "Load Securement"
+  ]
+}

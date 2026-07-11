@@ -1,0 +1,14 @@
+{
+  "key": "executive",
+  "label": "Executive",
+  "resume_template": "resumes/general.html",
+  "layout": "leadership-clean",
+  "colors": {"accent": "#343a46", "header": "#343a46"},
+  "fonts": {"primary": "Arial", "heading": "Arial"},
+  "cover_letter": "executive_cover_letter",
+  "linkedin": "executive_linkedin",
+  "interview": "executive_interview",
+  "ats_keywords": ["Strategy", "Leadership", "P&L", "Operations", "Transformation"],
+  "experience_heading": "Leadership Experience",
+  "core_strengths": ["Strategic Planning", "Team Leadership", "Operational Excellence", "Change Management", "P&L Ownership", "Stakeholder Alignment"]
+}

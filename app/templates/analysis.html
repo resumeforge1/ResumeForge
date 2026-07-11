@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}ATS Analysis - {{ client.full_name }}{% endblock %}
+{% block content %}
+<section class="panel">
+  <p class="eyebrow">Job description analyzer</p>
+  <h1>{{ result.ats_score }} ATS Score</h1>
+  <p class="lede">{{ result.match_percentage }}% keyword match for {{ client.full_name }}</p>
+</section>
+<section class="grid two">
+  <div class="workspace">
+    <h2>Missing Keywords</h2>
+    <div class="tag-list">
+      {% for item in result.missing_keywords %}<span>{{ item }}</span>{% endfor %}
+    </div>
+  </div>
+  <div class="workspace">
+    <h2>Required Certifications</h2>
+    <div class="tag-list">
+      {% for item in result.required_certifications %}<span>{{ item }}</span>{% endfor %}
+    </div>
+  </div>
+  <div class="workspace">
+    <h2>Required Skills</h2>
+    <div class="tag-list">
+      {% for item in result.required_skills %}<span>{{ item }}</span>{% endfor %}
+    </div>
+  </div>
+  <div class="workspace">
+    <h2>Recommendations</h2>
+    {% for item in result.recommendations %}<p class="note">{{ item }}</p>{% endfor %}
+  </div>
+</section>
+<a class="button" href="/clients/{{ client.id }}/preview">Back to Preview</a>
+{% endblock %}

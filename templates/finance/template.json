@@ -1,0 +1,14 @@
+{
+  "key": "finance",
+  "label": "Finance",
+  "resume_template": "resumes/general.html",
+  "layout": "executive-clean",
+  "colors": {"accent": "#244f73", "header": "#244f73"},
+  "fonts": {"primary": "Arial", "heading": "Arial"},
+  "cover_letter": "finance_cover_letter",
+  "linkedin": "finance_linkedin",
+  "interview": "finance_interview",
+  "ats_keywords": ["Financial Analysis", "Reporting", "Forecasting", "Compliance", "Excel"],
+  "experience_heading": "Finance Experience",
+  "core_strengths": ["Financial Analysis", "Reporting", "Forecasting", "Budgeting", "Compliance", "Stakeholder Communication"]
+}

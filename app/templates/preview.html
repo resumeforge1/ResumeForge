@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Preview - {{ client.full_name }}{% endblock %}
+{% block content %}
+<section class="preview-layout">
+  <aside class="side-panel">
+    <p class="eyebrow">Preview</p>
+    <h1>{{ client.full_name }}</h1>
+    <p>{{ client.target_role }}</p>
+    <a class="button primary" href="/clients/{{ client.id }}/export/ats_docx">ATS DOCX</a>
+    <a class="button primary" href="/clients/{{ client.id }}/export/premium_docx">Premium DOCX</a>
+    <a class="button primary" href="/clients/{{ client.id }}/export/premium_pdf">Premium PDF</a>
+    <a class="button primary" href="/clients/{{ client.id }}/export/cover_letter_docx">Cover Letter DOCX</a>
+    <a class="button" href="/clients/{{ client.id }}/export/zip_package">Zip Package</a>
+    <a class="button" href="/clients/{{ client.id }}/download">Download All</a>
+    <a class="button" href="/clients/{{ client.id }}">CRM</a>
+    <a class="button ghost" href="/clients/new">New Intake</a>
+    <form class="mini-stack" method="post" action="/clients/{{ client.id }}/rewrite/summary">
+      <button class="button ghost" type="submit">Improve Summary</button>
+    </form>
+    <form class="mini-stack" method="post" action="/clients/{{ client.id }}/rewrite/experience">
+      <button class="button ghost" type="submit">Improve Experience</button>
+    </form>
+    <form class="mini-stack" method="post" action="/clients/{{ client.id }}/rewrite/skills">
+      <button class="button ghost" type="submit">Improve Skills</button>
+    </form>
+    <form class="jd-box" method="post" action="/clients/{{ client.id }}/analyze">
+      <label>Job description<textarea name="job_description" rows="7"></textarea></label>
+      <button class="button primary" type="submit">Analyze Match</button>
+    </form>
+  </aside>
+  <section class="paper-preview">
+    <iframe title="Resume preview" srcdoc="{{ resume_html|e }}"></iframe>
+  </section>
+</section>
+{% endblock %}

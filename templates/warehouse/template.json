@@ -1,0 +1,14 @@
+{
+  "key": "warehouse",
+  "label": "Warehouse",
+  "resume_template": "resumes/general.html",
+  "layout": "operations-clean",
+  "colors": {"accent": "#44613f", "header": "#44613f"},
+  "fonts": {"primary": "Arial", "heading": "Arial"},
+  "cover_letter": "warehouse_cover_letter",
+  "linkedin": "warehouse_linkedin",
+  "interview": "warehouse_interview",
+  "ats_keywords": ["Inventory", "Forklift", "Shipping", "Receiving", "Safety"],
+  "experience_heading": "Warehouse Experience",
+  "core_strengths": ["Inventory Control", "Forklift Operation", "Order Picking", "Shipping and Receiving", "Safety Compliance", "Team Collaboration"]
+}

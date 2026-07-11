@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Downloads - {{ client.full_name }}{% endblock %}
+{% block content %}
+<section class="download-shell">
+  <p class="eyebrow">Generated package</p>
+  <h1>{{ client.full_name }}</h1>
+  <p class="lede">{{ client.target_role }}</p>
+  <div class="download-grid">
+    {% set cards = [
+      ('ats_docx', 'ATS Resume', 'DOCX'),
+      ('premium_docx', 'Premium Resume', 'DOCX'),
+      ('premium_pdf', 'Premium Resume', 'PDF'),
+      ('cover_letter_docx', 'Cover Letter', 'DOCX'),
+      ('references_docx', 'References Sheet', 'DOCX'),
+      ('linkedin_docx', 'LinkedIn Profile', 'DOCX'),
+      ('interview_docx', 'Interview Questions', 'DOCX'),
+      ('application_email_txt', 'Application Email', 'TXT'),
+      ('zip_package', 'Complete Package', 'ZIP')
+    ] %}
+    {% for key, label, ext in cards %}
+      <a class="download-card" href="/clients/{{ client.id }}/export/{{ key }}">
+        <span>{{ label }}</span>
+        <strong>{{ ext }}</strong>
+      </a>
+    {% endfor %}
+  </div>
+  <div class="actions inline">
+    <a class="button" href="/clients/{{ client.id }}/preview">Back to Preview</a>
+    <a class="button ghost" href="/">Home</a>
+  </div>
+</section>
+{% endblock %}

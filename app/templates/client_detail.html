@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Client CRM - {{ client.full_name }}{% endblock %}
+{% block content %}
+<section class="panel">
+  <div class="section-heading">
+    <div>
+      <p class="eyebrow">Client CRM</p>
+      <h1>{{ client.full_name }}</h1>
+      <p class="lede">{{ client.target_role }} | {{ client.status }}</p>
+    </div>
+    <div class="actions">
+      <a class="button primary" href="/clients/{{ client.id }}/preview">Preview</a>
+      <form method="post" action="/clients/{{ client.id }}/duplicate"><button class="button" type="submit">Duplicate</button></form>
+      <form method="post" action="/clients/{{ client.id }}/archive"><button class="button" type="submit">Archive</button></form>
+      <form method="post" action="/clients/{{ client.id }}/delete"><button class="button ghost" type="submit">Delete</button></form>
+    </div>
+  </div>
+</section>
+
+<section class="grid two crm-grid">
+  <div class="workspace">
+    <h2>Notes</h2>
+    <form method="post" action="/clients/{{ client.id }}/notes">
+      <textarea name="note" rows="4" placeholder="Add client note"></textarea>
+      <button class="button primary" type="submit">Save Note</button>
+    </form>
+    {% for note in notes %}
+      <p class="note">{{ note.note }} <span>{{ note.created_at }}</span></p>
+    {% endfor %}
+  </div>
+  <div class="workspace">
+    <h2>Application Tracker</h2>
+    <form class="grid two" method="post" action="/clients/{{ client.id }}/applications">
+      <label>Company<input name="company"></label>
+      <label>Position<input name="position"></label>
+      <label>Salary<input name="salary"></label>
+      <label>Status<select name="status"><option>Applied</option><option>Interview Scheduled</option><option>Offer</option><option>Rejected</option><option>Accepted</option></select></label>
+      <label>Date Applied<input name="date_applied" type="date"></label>
+      <label class="wide">Notes<textarea name="notes" rows="3"></textarea></label>
+      <button class="button primary" type="submit">Add Application</button>
+    </form>
+    {% for app in applications %}
+      <div class="note">
+        <strong>{{ app.company }}</strong> - {{ app.position }} | {{ app.status }} | {{ app.date_applied }}
+        <form class="grid two" method="post" action="/clients/{{ client.id }}/applications/{{ app.id }}/edit">
+          <label>Company<input name="company" value="{{ app.company }}"></label>
+          <label>Position<input name="position" value="{{ app.position }}"></label>
+          <label>Salary<input name="salary" value="{{ app.salary }}"></label>
+          <label>Status<select name="status">
+            {% for status in ["Applied", "Interview Scheduled", "Offer", "Rejected", "Accepted"] %}
+              <option {% if app.status == status %}selected{% endif %}>{{ status }}</option>
+            {% endfor %}
+          </select></label>
+          <label>Date Applied<input name="date_applied" type="date" value="{{ app.date_applied }}"></label>
+          <label class="wide">Notes<textarea name="notes" rows="2">{{ app.notes }}</textarea></label>
+          <button class="button" type="submit">Update</button>
+        </form>
+        <form method="post" action="/clients/{{ client.id }}/applications/{{ app.id }}/delete">
+          <button class="button ghost" type="submit">Delete Application</button>
+        </form>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="workspace">
+  <h2>Version History</h2>
+  {% for version in versions %}
+    <p class="note">{{ version.reason }} <span>{{ version.created_at }}</span></p>
+  {% endfor %}
+</section>
+{% endblock %}

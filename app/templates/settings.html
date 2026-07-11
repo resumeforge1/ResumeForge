@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Settings - ResumeForge{% endblock %}
+{% block content %}
+<section class="panel">
+  <p class="eyebrow">Settings</p>
+  <h1>Branding & Layout</h1>
+</section>
+<form class="workspace grid two" method="post" action="/settings">
+  <label>Accent color<input name="accent_color" type="color" value="{{ settings.accent_color }}"></label>
+  <label>Font family<input name="font_family" value="{{ settings.font_family }}"></label>
+  <label>Header style<input name="header_style" value="{{ settings.header_style }}"></label>
+  <label>Resume spacing<input name="resume_spacing" value="{{ settings.resume_spacing }}"></label>
+  <label>Margins<input name="margins" value="{{ settings.margins }}"></label>
+  <label>Agency branding<input name="agency_branding" value="{{ settings.agency_branding }}"></label>
+  <label class="wide">Section order<textarea name="section_order" rows="3">{{ settings.section_order }}</textarea></label>
+  <button class="button primary" type="submit">Save Settings</button>
+</form>
+{% endblock %}

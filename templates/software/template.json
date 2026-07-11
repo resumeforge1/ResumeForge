@@ -1,0 +1,14 @@
+{
+  "key": "software",
+  "label": "Software",
+  "resume_template": "resumes/general.html",
+  "layout": "technical-clean",
+  "colors": {"accent": "#3157a4", "header": "#3157a4"},
+  "fonts": {"primary": "Arial", "heading": "Arial"},
+  "cover_letter": "software_cover_letter",
+  "linkedin": "software_linkedin",
+  "interview": "software_interview",
+  "ats_keywords": ["Python", "APIs", "SQL", "Cloud", "Testing", "Agile"],
+  "experience_heading": "Technical Experience",
+  "core_strengths": ["Software Development", "API Integration", "Database Design", "Testing", "Debugging", "Agile Delivery"]
+}
