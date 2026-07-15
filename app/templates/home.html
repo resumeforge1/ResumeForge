@@ -22,7 +22,7 @@
     <small>{{ career.resume_score.label }}</small>
   </article>
   <article class="metric-card">
-    <span>Fresh Jobs</span>
+    <span>Jobs Found Today</span>
     <strong>{{ career.jobs.discovered }}</strong>
     <small>{{ career.jobs.new_jobs }} new since discovery</small>
   </article>
@@ -37,14 +37,24 @@
     <small>{{ stats.interviews }} interviews | {{ stats.offers }} offers</small>
   </article>
   <article class="metric-card">
-    <span>Unread Alerts</span>
-    <strong>{{ career.alerts|length }}</strong>
-    <small>{{ career.providers.enabled_ready }} enabled providers ready</small>
+    <span>Provider Status</span>
+    <strong>{{ career.providers.enabled_ready }}</strong>
+    <small>Unread Alerts: {{ career.alerts|length }}</small>
   </article>
   <article class="metric-card">
-    <span>Prepared Apps</span>
+    <span>Prepared Applications</span>
     <strong>{{ career.packages.prepared_applications }}</strong>
     <small>{{ career.packages.applications_ready_to_send }} ready to send</small>
+  </article>
+  <article class="metric-card">
+    <span>Applications Ready</span>
+    <strong>{{ career.packages.applications_ready_to_send }}</strong>
+    <small>Review-only packages</small>
+  </article>
+  <article class="metric-card">
+    <span>Average Match Score</span>
+    <strong>{{ career.packages.average_match_score }}</strong>
+    <small>Across scored jobs</small>
   </article>
 </section>
 
@@ -170,6 +180,20 @@
 
 <section class="grid two">
   <article class="panel">
+    <p class="eyebrow">Recent Activity</p>
+    <h2>Latest client updates</h2>
+    {% for item in stats.recent_activity %}
+    <p class="note">{{ item.full_name }} <span>{{ item.target_role }} | {{ item.status }} | {{ item.updated_at }}</span></p>
+    {% else %}
+    <div class="empty-state">
+      <span class="empty-icon"><svg width="20" height="20"><use href="#icon-resume"></use></svg></span>
+      <p>No recent activity yet.</p>
+      <a class="button secondary" href="/clients/new">Create Resume</a>
+    </div>
+    {% endfor %}
+  </article>
+
+  <article class="panel">
     <p class="eyebrow">Application Packages</p>
     <h2>Recent packages</h2>
     {% for item in career.packages.recent %}
@@ -195,14 +219,47 @@
     <p class="eyebrow">Career Analytics</p>
     <h2>Local activity charts</h2>
     {% if career.analytics.has_data %}
-    <div class="chart-bars" aria-label="Fresh jobs by source">
-      {% for item in career.analytics.jobs_by_source %}
-      <div><span>{{ item.label }}</span><strong style="width: {{ [item.value * 18, 100]|min }}%">{{ item.value }}</strong></div>
-      {% endfor %}
+    <div class="grid two compact">
+      <div class="chart-card">
+        <strong>Jobs by Source</strong>
+        <div class="chart-bars" aria-label="Jobs by Source">
+          {% for item in career.analytics.jobs_by_source %}
+          <div><span>{{ item.label }}</span><strong style="width: {{ [item.value * 18, 100]|min }}%">{{ item.value }}</strong></div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="chart-card">
+        <strong>Applications by Status</strong>
+        <div class="chart-bars" aria-label="Applications by Status">
+          {% for item in career.analytics.applications_by_status %}
+          <div><span>{{ item.label }}</span><strong style="width: {{ [item.value * 18, 100]|min }}%">{{ item.value }}</strong></div>
+          {% else %}
+          <p class="empty">No applications yet.</p>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="chart-card">
+        <strong>Average Match Trend</strong>
+        <div class="chart-mini" aria-label="Average Match Trend">
+          {% for item in career.analytics.average_match_score_over_time %}
+          <span style="height: {{ [item.value, 100]|min }}%"></span>
+          {% else %}
+          <p class="empty">No match trend yet.</p>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="chart-card">
+        <strong>Weekly Activity</strong>
+        <p class="muted">Recent Success Rate: {{ career.analytics.interview_conversion_rate }}% interviews, {{ career.analytics.offer_conversion_rate }}% offers.</p>
+        <p class="muted">Salary Distribution appears when salary data exists in matching jobs.</p>
+      </div>
     </div>
-    <p class="muted">Interview conversion: {{ career.analytics.interview_conversion_rate }}% | Offer conversion: {{ career.analytics.offer_conversion_rate }}%</p>
     {% else %}
-    <p class="empty">No analytics history yet. Activity appears after jobs or applications are added.</p>
+    <div class="empty-state">
+      <span class="empty-icon"><svg width="20" height="20"><use href="#icon-dashboard"></use></svg></span>
+      <p>No analytics history yet. Activity appears after jobs or applications are added.</p>
+      <a class="button secondary" href="/fresh-jobs">Find Jobs</a>
+    </div>
     {% endif %}
   </article>
 

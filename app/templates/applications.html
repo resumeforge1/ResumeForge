@@ -67,7 +67,7 @@
     <label>Date applied<input name="date_applied"></label>
     <label>Status
       <select name="status">
-        {% for option in ["Applied", "Interview", "Interview Scheduled", "Offer", "Rejected"] %}
+        {% for option in ["Applied", "Interview", "Interview Scheduled", "Offer", "Accepted", "Rejected"] %}
         <option value="{{ option }}">{{ option }}</option>
         {% endfor %}
       </select>

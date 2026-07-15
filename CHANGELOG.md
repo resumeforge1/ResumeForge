@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.14.0-dev - Unreleased
+
+- Added Phase 5 SaaS UI/UX polish across the shared layout, dashboard, Fresh Jobs, Application Package, Interview Prep, and Settings pages.
+- Added CSS design tokens, rounded cards, soft shadows, modern buttons, accessible focus states, responsive grids, light theme foundation, and future dark-mode variables.
+- Added inline SVG icon system, sticky sidebar navigation, notification banners, loading button states, skeleton utility styles, improved empty states, and color-coded match score badges.
+- Redesigned dashboard KPI cards, recent activity, package statistics, application pipeline, and local analytics chart cards.
+- Redesigned Application Package Builder as a collapsible multi-section workspace with sticky export sidebar.
+- Modernized Settings into grouped cards for Appearance, AI Provider, Job Providers, Export Settings, and Future Features.
+
 ## 0.13.0-dev - Unreleased
 
 - Added Phase 4 AI Application Package Builder for selected fresh jobs.

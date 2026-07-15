@@ -1,18 +1,55 @@
 {% extends "base.html" %}
 {% block title %}Settings - ResumeForge{% endblock %}
 {% block content %}
-<section class="panel">
-  <p class="eyebrow">Settings</p>
-  <h1>Branding & Layout</h1>
+<section class="hero panel">
+  <div>
+    <p class="eyebrow">Settings</p>
+    <h1>Workspace controls</h1>
+    <p class="lede">Tune appearance, resume exports, provider defaults, and future feature preferences without changing client data.</p>
+  </div>
+  <button class="button primary" type="submit" form="settings-form">Save Settings</button>
 </section>
-<form class="workspace grid two" method="post" action="/settings">
-  <label>Accent color<input name="accent_color" type="color" value="{{ settings.accent_color }}"></label>
-  <label>Font family<input name="font_family" value="{{ settings.font_family }}"></label>
-  <label>Header style<input name="header_style" value="{{ settings.header_style }}"></label>
-  <label>Resume spacing<input name="resume_spacing" value="{{ settings.resume_spacing }}"></label>
-  <label>Margins<input name="margins" value="{{ settings.margins }}"></label>
-  <label>Agency branding<input name="agency_branding" value="{{ settings.agency_branding }}"></label>
-  <label class="wide">Section order<textarea name="section_order" rows="3">{{ settings.section_order }}</textarea></label>
-  <button class="button primary" type="submit">Save Settings</button>
+
+<form id="settings-form" method="post" action="/settings" class="grid two">
+  <section class="panel">
+    <p class="eyebrow">Appearance</p>
+    <h2>Branding and layout</h2>
+    <label>Accent color<input name="accent_color" type="color" value="{{ settings.accent_color }}"></label>
+    <label>Font family<input name="font_family" value="{{ settings.font_family }}"></label>
+    <label>Header style<input name="header_style" value="{{ settings.header_style }}"></label>
+    <label>Agency branding<input name="agency_branding" value="{{ settings.agency_branding }}"></label>
+  </section>
+
+  <section class="panel">
+    <p class="eyebrow">Export Settings</p>
+    <h2>Resume document defaults</h2>
+    <label>Resume spacing<input name="resume_spacing" value="{{ settings.resume_spacing }}"></label>
+    <label>Margins<input name="margins" value="{{ settings.margins }}"></label>
+    <label>Section order<textarea name="section_order" rows="5">{{ settings.section_order }}</textarea></label>
+  </section>
+
+  <section class="panel">
+    <p class="eyebrow">AI Provider</p>
+    <h2>Current mode</h2>
+    <p class="notice info">Mock provider is active by default. Paid APIs are not required for local workflows.</p>
+    <p class="muted">Provider selection remains controlled through the existing local configuration file.</p>
+  </section>
+
+  <section class="panel">
+    <p class="eyebrow">Job Providers</p>
+    <h2>Fresh Jobs integrations</h2>
+    <p>Manage mock, manual, and optional official API providers from the dedicated provider page.</p>
+    <a class="button secondary" href="/fresh-jobs/providers">Open Provider Settings</a>
+  </section>
+
+  <section class="panel wide">
+    <p class="eyebrow">Future Features</p>
+    <h2>Reserved controls</h2>
+    <div class="grid three">
+      <div class="mini-metric"><span>Dark mode</span><strong>Ready</strong></div>
+      <div class="mini-metric"><span>Agency branding</span><strong>Local</strong></div>
+      <div class="mini-metric"><span>Auto-apply</span><strong>Off</strong></div>
+    </div>
+  </section>
 </form>
 {% endblock %}

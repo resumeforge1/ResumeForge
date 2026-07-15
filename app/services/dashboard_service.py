@@ -23,6 +23,7 @@ PIPELINE_STATUSES = (
     "interview",
     "offer",
     "rejected",
+    "accepted",
     "dismissed",
 )
 
@@ -257,7 +258,7 @@ def normalize_pipeline_status(status: str) -> str:
     normalized = str(status or "").strip().lower()
     mapping = {
         "interview scheduled": "interview",
-        "accepted": "offer",
+        "accepted": "accepted",
         "offer": "offer",
         "applied": "applied",
         "ready to apply": "ready to apply",

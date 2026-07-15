@@ -15,6 +15,7 @@ JOB_STATUSES = (
     "interview",
     "rejected",
     "offer",
+    "accepted",
     "dismissed",
 )
 

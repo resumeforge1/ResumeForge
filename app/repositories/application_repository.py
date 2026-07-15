@@ -15,6 +15,7 @@ APPLICATION_STATUSES = {
     "Interview Scheduled",
     "Offer",
     "Rejected",
+    "Accepted",
     "Dismissed",
 }
 

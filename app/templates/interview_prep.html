@@ -24,7 +24,7 @@
 <section class="grid two">
   <article class="panel">
     <p class="eyebrow">{{ prep.company }}</p>
-    <h2>Likely questions</h2>
+    <h2>Common questions</h2>
     <ul class="clean-list">
       {% for item in prep.questions %}<li>{{ item }}</li>{% endfor %}
     </ul>
@@ -32,7 +32,7 @@
     <ul class="clean-list">
       {% for item in prep.talking_points %}<li>{{ item }}</li>{% endfor %}
     </ul>
-    <h2>STAR planning prompts</h2>
+    <h2>STAR tips</h2>
     <ul class="clean-list">
       {% for item in prep.star_prompts %}<li>{{ item }}</li>{% endfor %}
     </ul>
@@ -65,7 +65,7 @@
 
 <section class="grid two">
   <article class="panel">
-    <p class="eyebrow">Checklist</p>
+    <p class="eyebrow">Confidence Checklist</p>
     <h2>Before the interview</h2>
     <ul class="clean-list">
       {% for item in prep.checklist %}<li>{{ item }}</li>{% endfor %}
@@ -77,6 +77,7 @@
     <p class="eyebrow">Notes</p>
     <h2>Save interview notes</h2>
     <textarea name="notes" rows="10">{{ notes }}</textarea>
+    {% if not notes %}<p class="empty">No notes yet. Capture reminders, concerns, and follow-up items here.</p>{% endif %}
     <button class="button primary" type="submit">Save Notes</button>
   </form>
 </section>
