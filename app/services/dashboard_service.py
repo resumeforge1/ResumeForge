@@ -28,35 +28,43 @@ PIPELINE_STATUSES = (
 )
 
 
-def dashboard_stats() -> dict[str, Any]:
+def dashboard_stats(user_id: int | None = None) -> dict[str, Any]:
+    client_scope = " AND (user_id = ? OR user_id IS NULL)" if user_id is not None else ""
+    tracker_scope = " WHERE (user_id = ? OR user_id IS NULL)" if user_id is not None else ""
+    tracker_and = " AND (user_id = ? OR user_id IS NULL)" if user_id is not None else ""
+    params = (user_id,) if user_id is not None else ()
     with get_connection() as conn:
         total_clients = conn.execute(
-            "SELECT COUNT(*) AS count FROM clients WHERE deleted_at IS NULL"
+            f"SELECT COUNT(*) AS count FROM clients WHERE deleted_at IS NULL{client_scope}",
+            params,
         ).fetchone()["count"]
         applications = conn.execute(
-            "SELECT COUNT(*) AS count FROM application_tracker"
+            f"SELECT COUNT(*) AS count FROM application_tracker{tracker_scope}",
+            params,
         ).fetchone()["count"]
         interviews = conn.execute(
-            "SELECT COUNT(*) AS count FROM application_tracker WHERE status = ?",
-            ("Interview Scheduled",),
+            f"SELECT COUNT(*) AS count FROM application_tracker WHERE status = ?{tracker_and}",
+            ("Interview Scheduled", *params),
         ).fetchone()["count"]
         offers = conn.execute(
-            "SELECT COUNT(*) AS count FROM application_tracker WHERE status = ?",
-            ("Offer",),
+            f"SELECT COUNT(*) AS count FROM application_tracker WHERE status = ?{tracker_and}",
+            ("Offer", *params),
         ).fetchone()["count"]
         templates_used = conn.execute(
-            "SELECT COUNT(DISTINCT template_key) AS count FROM clients WHERE deleted_at IS NULL"
+            f"SELECT COUNT(DISTINCT template_key) AS count FROM clients WHERE deleted_at IS NULL{client_scope}",
+            params,
         ).fetchone()["count"]
         recent_clients = [
             dict(row)
             for row in conn.execute(
-                """
+                f"""
                 SELECT id, full_name, target_role, status, updated_at
                 FROM clients
-                WHERE deleted_at IS NULL
+                WHERE deleted_at IS NULL{client_scope}
                 ORDER BY updated_at DESC, id DESC
                 LIMIT 5
-                """
+                """,
+                params,
             ).fetchall()
         ]
     return {

@@ -20,6 +20,105 @@ def init_db() -> None:
     with get_connection() as conn:
         conn.execute(
             """
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL UNIQUE,
+                username TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                last_login TEXT,
+                is_active INTEGER DEFAULT 1,
+                is_admin INTEGER DEFAULT 0
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                session_token TEXT NOT NULL UNIQUE,
+                csrf_token TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                absolute_expires_at TEXT,
+                remember_me INTEGER DEFAULT 0,
+                user_agent TEXT,
+                ip_address TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                last_seen_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                revoked_at TEXT,
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                token TEXT NOT NULL UNIQUE,
+                expires_at TEXT NOT NULL,
+                used_at TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_preferences (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL UNIQUE,
+                display_name TEXT,
+                email TEXT,
+                preferred_resume_template TEXT DEFAULT 'general',
+                default_industry TEXT DEFAULT '',
+                location TEXT DEFAULT '',
+                theme_preference TEXT DEFAULT 'light',
+                notification_preferences TEXT DEFAULT '',
+                api_provider_preferences TEXT DEFAULT 'mock',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS login_audit_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT,
+                user_id INTEGER,
+                success INTEGER DEFAULT 0,
+                ip_address TEXT,
+                user_agent TEXT,
+                reason TEXT DEFAULT '',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS auth_migration_state (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                legacy_assigned_to_user_id INTEGER,
+                legacy_assigned_at TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(legacy_assigned_to_user_id) REFERENCES users(id)
+            )
+            """
+        )
+        ensure_table_columns(conn, "user_sessions", {"absolute_expires_at": "TEXT"})
+        ensure_table_columns(conn, "login_audit_log", {"reason": "TEXT DEFAULT ''"})
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(session_token)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token ON password_reset_tokens(token)")
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS clients (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 template_key TEXT NOT NULL,
@@ -417,12 +516,37 @@ def init_db() -> None:
             )
             """
         )
+        for table in (
+            "client_versions",
+            "client_notes",
+            "application_tracker",
+            "jd_analyses",
+            "job_search_profiles",
+            "discovered_jobs",
+            "job_matches",
+            "saved_jobs",
+            "application_packages",
+            "job_search_runs",
+            "job_alerts",
+            "provider_run_logs",
+            "imported_jobs",
+            "interview_prep_notes",
+            "application_package_versions",
+            "application_package_notes",
+            "application_package_exports",
+            "interview_coach_sessions",
+            "interview_coach_answers",
+            "interview_coach_exports",
+        ):
+            ensure_table_columns(conn, table, {"user_id": "INTEGER"})
+            conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_user_id ON {table}(user_id)")
         conn.commit()
 
 
 def ensure_client_columns(conn: sqlite3.Connection) -> None:
     existing = {row["name"] for row in conn.execute("PRAGMA table_info(clients)").fetchall()}
     columns = {
+        "user_id": "INTEGER",
         "status": "TEXT DEFAULT 'Draft'",
         "notes": "TEXT DEFAULT ''",
         "archived_at": "TEXT",
@@ -446,8 +570,16 @@ def ensure_discovered_job_columns(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE discovered_jobs ADD COLUMN {name} {definition}")
 
 
+def ensure_table_columns(conn: sqlite3.Connection, table: str, columns: dict[str, str]) -> None:
+    existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    for name, definition in columns.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+
+
 def save_client(data: dict[str, Any]) -> int:
     fields = {
+        "user_id": data.get("user_id"),
         "template_key": data.get("template_key", "general"),
         "full_name": data.get("full_name", "").strip(),
         "city_state": data.get("city_state", "").strip(),
@@ -464,10 +596,10 @@ def save_client(data: dict[str, Any]) -> int:
         cursor = conn.execute(
             """
             INSERT INTO clients (
-                template_key, full_name, city_state, phone, email, target_role,
+                user_id, template_key, full_name, city_state, phone, email, target_role,
                 professional_summary, certifications, skills, work_experience, education
             ) VALUES (
-                :template_key, :full_name, :city_state, :phone, :email, :target_role,
+                :user_id, :template_key, :full_name, :city_state, :phone, :email, :target_role,
                 :professional_summary, :certifications, :skills, :work_experience, :education
             )
             """,
@@ -499,7 +631,7 @@ def list_clients(limit: int = 20) -> list[dict[str, Any]]:
     with get_connection() as conn:
         rows = conn.execute(
             """
-            SELECT id, full_name, target_role, template_key, status, archived_at, deleted_at, created_at
+            SELECT id, user_id, full_name, target_role, template_key, status, archived_at, deleted_at, created_at
             FROM clients
             WHERE deleted_at IS NULL
             ORDER BY id DESC LIMIT ?
@@ -513,6 +645,6 @@ def create_client_version(
     conn: sqlite3.Connection, client_id: int, snapshot: dict[str, Any], reason: str
 ) -> None:
     conn.execute(
-        "INSERT INTO client_versions (client_id, snapshot, reason) VALUES (?, ?, ?)",
-        (client_id, json.dumps(snapshot), reason),
+        "INSERT INTO client_versions (client_id, snapshot, reason, user_id) VALUES (?, ?, ?, ?)",
+        (client_id, json.dumps(snapshot), reason, snapshot.get("user_id")),
     )

@@ -12,6 +12,7 @@ JSON_FIELDS = ("certifications", "skills", "work_experience", "education")
 
 def serialize_client_fields(data: dict[str, Any]) -> dict[str, Any]:
     return {
+        "user_id": data.get("user_id"),
         "template_key": data.get("template_key", "general"),
         "full_name": data.get("full_name", "").strip(),
         "city_state": data.get("city_state", "").strip(),
@@ -32,16 +33,22 @@ class ClientRepository:
     def create(self, data: dict[str, Any]) -> int:
         return save_client(data)
 
-    def get(self, client_id: int) -> dict[str, Any] | None:
-        return get_client(client_id)
+    def get(self, client_id: int, user_id: int | None = None) -> dict[str, Any] | None:
+        client = get_client(client_id)
+        if client and user_id is not None and client.get("user_id") != user_id:
+            return None
+        return client
 
-    def search(self, query: str = "", include_archived: bool = False) -> list[dict[str, Any]]:
+    def search(self, query: str = "", include_archived: bool = False, user_id: int | None = None) -> list[dict[str, Any]]:
         sql = """
-            SELECT id, full_name, target_role, template_key, status, archived_at, deleted_at, created_at
+            SELECT id, user_id, full_name, target_role, template_key, status, archived_at, deleted_at, created_at
             FROM clients
             WHERE deleted_at IS NULL
         """
         params: list[Any] = []
+        if user_id is not None:
+            sql += " AND user_id = ?"
+            params.append(user_id)
         if not include_archived:
             sql += " AND archived_at IS NULL"
         if query:
@@ -61,6 +68,7 @@ class ClientRepository:
                 """
                 UPDATE clients SET
                     template_key = :template_key,
+                    user_id = COALESCE(:user_id, user_id),
                     full_name = :full_name,
                     city_state = :city_state,
                     phone = :phone,
@@ -81,7 +89,7 @@ class ClientRepository:
             conn.commit()
 
     def duplicate(self, client_id: int) -> int:
-        client = self.get(client_id)
+        client = self.get(client_id, user_id=data_owner())
         if client is None:
             raise ValueError("Client not found")
         client["full_name"] = f"{client['full_name']} Copy"
@@ -90,22 +98,22 @@ class ClientRepository:
     def set_archived(self, client_id: int, archived: bool) -> None:
         value = datetime.utcnow().isoformat(timespec="seconds") if archived else None
         with get_connection() as conn:
-            conn.execute("UPDATE clients SET archived_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (value, client_id))
+            conn.execute("UPDATE clients SET archived_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id IS ?", (value, client_id, data_owner()))
             conn.commit()
 
     def soft_delete(self, client_id: int) -> None:
         with get_connection() as conn:
             conn.execute(
-                "UPDATE clients SET deleted_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                (datetime.utcnow().isoformat(timespec="seconds"), client_id),
+                "UPDATE clients SET deleted_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id IS ?",
+                (datetime.utcnow().isoformat(timespec="seconds"), client_id, data_owner()),
             )
             conn.commit()
 
     def restore(self, client_id: int) -> None:
         with get_connection() as conn:
             conn.execute(
-                "UPDATE clients SET deleted_at = NULL, archived_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                (client_id,),
+                "UPDATE clients SET deleted_at = NULL, archived_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id IS ?",
+                (client_id, data_owner()),
             )
             conn.commit()
 
@@ -114,8 +122,8 @@ class ClientRepository:
             return [
                 dict(row)
                 for row in conn.execute(
-                    "SELECT id, reason, created_at FROM client_versions WHERE client_id = ? ORDER BY id DESC",
-                    (client_id,),
+                    "SELECT id, reason, created_at FROM client_versions WHERE client_id = ? AND user_id IS ? ORDER BY id DESC",
+                    (client_id, data_owner()),
                 ).fetchall()
             ]
 
@@ -123,7 +131,7 @@ class ClientRepository:
         if not note.strip():
             return
         with get_connection() as conn:
-            conn.execute("INSERT INTO client_notes (client_id, note) VALUES (?, ?)", (client_id, note.strip()))
+            conn.execute("INSERT INTO client_notes (client_id, note, user_id) VALUES (?, ?, ?)", (client_id, note.strip(), data_owner()))
             conn.commit()
 
     def notes(self, client_id: int) -> list[dict[str, Any]]:
@@ -131,7 +139,16 @@ class ClientRepository:
             return [
                 dict(row)
                 for row in conn.execute(
-                    "SELECT id, note, created_at FROM client_notes WHERE client_id = ? ORDER BY id DESC",
-                    (client_id,),
+                    "SELECT id, note, created_at FROM client_notes WHERE client_id = ? AND user_id IS ? ORDER BY id DESC",
+                    (client_id, data_owner()),
                 ).fetchall()
             ]
+
+
+def data_owner() -> int | None:
+    try:
+        from app.main import current_user_id
+
+        return current_user_id()
+    except Exception:
+        return None

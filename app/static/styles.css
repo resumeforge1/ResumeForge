@@ -958,6 +958,30 @@ details.panel > .details-body {
   }
 }
 
+.nav-form {
+  margin: 0;
+}
+
+.nav-form button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 12px;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  padding: 10px 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.nav-form button:hover,
+.nav-form button:focus-visible {
+  background: var(--surface-soft);
+  outline: 2px solid transparent;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

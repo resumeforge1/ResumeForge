@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Profile - ResumeForge{% endblock %}
+{% block content %}
+<section class="hero">
+  <div>
+    <span class="eyebrow">Account</span>
+    <h1>Profile preferences</h1>
+    <p class="lede">Manage account details and default workspace preferences.</p>
+  </div>
+</section>
+
+{% if message %}<div class="notice success">{{ message }}</div>{% endif %}
+
+<form method="post" action="/profile" class="grid two">
+  <section class="panel">
+    <h2>Identity</h2>
+    <label>Display name<input name="display_name" value="{{ preferences.display_name or user.username }}"></label>
+    <label>Email<input name="email" type="email" value="{{ preferences.email or user.email }}"></label>
+    <label>Location<input name="location" value="{{ preferences.location }}"></label>
+  </section>
+  <section class="panel">
+    <h2>Defaults</h2>
+    <label>Preferred resume template
+      <select name="preferred_resume_template">
+        {% for template in industry_templates %}
+        <option value="{{ template.key }}" {% if preferences.preferred_resume_template == template.key %}selected{% endif %}>{{ template.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Default industry<input name="default_industry" value="{{ preferences.default_industry }}"></label>
+    <label>Theme preference
+      <select name="theme_preference">
+        <option value="light" {% if preferences.theme_preference == "light" %}selected{% endif %}>Light</option>
+        <option value="dark" {% if preferences.theme_preference == "dark" %}selected{% endif %}>Dark</option>
+        <option value="system" {% if preferences.theme_preference == "system" %}selected{% endif %}>System</option>
+      </select>
+    </label>
+  </section>
+  <section class="panel">
+    <h2>Notifications</h2>
+    <label>Notification preferences<textarea name="notification_preferences" rows="5">{{ preferences.notification_preferences }}</textarea></label>
+  </section>
+  <section class="panel">
+    <h2>Provider Preferences</h2>
+    <label>API provider preferences<input name="api_provider_preferences" value="{{ preferences.api_provider_preferences or 'mock' }}"></label>
+    <p class="muted">Mock provider remains the default. OAuth providers are planned for a later phase.</p>
+  </section>
+  <div class="actions">
+    <button class="button primary" type="submit">Save Profile</button>
+  </div>
+</form>
+{% endblock %}

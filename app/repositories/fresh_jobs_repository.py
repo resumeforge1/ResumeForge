@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from app.database import get_connection
+from app.repositories.client_repository import data_owner
 
 
 JOB_STATUSES = (
@@ -23,7 +24,7 @@ JOB_STATUSES = (
 class FreshJobsRepository:
     def get_profile(self, client_id: int) -> dict[str, Any] | None:
         with get_connection() as conn:
-            row = conn.execute("SELECT * FROM job_search_profiles WHERE client_id = ? ORDER BY id DESC", (client_id,)).fetchone()
+            row = conn.execute("SELECT * FROM job_search_profiles WHERE client_id = ? AND user_id IS ? ORDER BY id DESC", (client_id, data_owner())).fetchone()
         return parse_profile(dict(row)) if row else None
 
     def save_profile(self, client_id: int, data: dict[str, Any]) -> int:
@@ -45,7 +46,7 @@ class FreshJobsRepository:
                         excluded_companies = :excluded_companies,
                         required_licenses_certifications = :required_licenses_certifications,
                         updated_at = CURRENT_TIMESTAMP
-                    WHERE id = :id
+                    WHERE id = :id AND user_id IS :user_id
                     """,
                     fields,
                 )
@@ -54,11 +55,11 @@ class FreshJobsRepository:
                 cursor = conn.execute(
                     """
                     INSERT INTO job_search_profiles (
-                        client_id, target_role, location, commute_radius, remote_preference,
+                        client_id, user_id, target_role, location, commute_radius, remote_preference,
                         minimum_salary, employment_type, preferred_schedule, excluded_companies,
                         required_licenses_certifications
                     ) VALUES (
-                        :client_id, :target_role, :location, :commute_radius, :remote_preference,
+                        :client_id, :user_id, :target_role, :location, :commute_radius, :remote_preference,
                         :minimum_salary, :employment_type, :preferred_schedule, :excluded_companies,
                         :required_licenses_certifications
                     )
@@ -72,8 +73,8 @@ class FreshJobsRepository:
     def mark_checked(self, client_id: int, checked_at: str) -> None:
         with get_connection() as conn:
             conn.execute(
-                "UPDATE job_search_profiles SET last_checked_at = ?, updated_at = CURRENT_TIMESTAMP WHERE client_id = ?",
-                (checked_at, client_id),
+                "UPDATE job_search_profiles SET last_checked_at = ?, updated_at = CURRENT_TIMESTAMP WHERE client_id = ? AND user_id IS ?",
+                (checked_at, client_id, data_owner()),
             )
             conn.commit()
 
@@ -81,10 +82,10 @@ class FreshJobsRepository:
         with get_connection() as conn:
             cursor = conn.execute(
                 """
-                INSERT INTO job_search_runs (client_id, provider, filters, jobs_found, new_jobs, last_checked_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO job_search_runs (client_id, user_id, provider, filters, jobs_found, new_jobs, last_checked_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (client_id, provider, json.dumps(filters), jobs_found, new_jobs, checked_at),
+                (client_id, data_owner(), provider, json.dumps(filters), jobs_found, new_jobs, checked_at),
             )
             conn.commit()
             return int(cursor.lastrowid)
@@ -140,10 +141,10 @@ class FreshJobsRepository:
             cursor = conn.execute(
                 """
                 INSERT INTO provider_run_logs (
-                    client_id, provider_key, status, jobs_found, new_jobs, updated_jobs, error_count, message, finished_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    client_id, user_id, provider_key, status, jobs_found, new_jobs, updated_jobs, error_count, message, finished_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (client_id, provider_key, status, jobs_found, new_jobs, updated_jobs, error_count, message[:500], finished_at),
+                (client_id, data_owner(), provider_key, status, jobs_found, new_jobs, updated_jobs, error_count, message[:500], finished_at),
             )
             conn.commit()
             return int(cursor.lastrowid)
@@ -152,10 +153,10 @@ class FreshJobsRepository:
         with get_connection() as conn:
             cursor = conn.execute(
                 """
-                INSERT INTO job_alerts (client_id, alert_type, message, related_job_id, provider_key)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO job_alerts (client_id, user_id, alert_type, message, related_job_id, provider_key)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (client_id, alert_type, message[:500], related_job_id, provider_key),
+                (client_id, data_owner(), alert_type, message[:500], related_job_id, provider_key),
             )
             conn.commit()
             return int(cursor.lastrowid)
@@ -163,8 +164,12 @@ class FreshJobsRepository:
     def list_alerts(self, client_id: int | None = None, include_read: bool = False) -> list[dict[str, Any]]:
         sql = "SELECT * FROM job_alerts WHERE 1=1"
         params: list[Any] = []
+        owner = data_owner()
+        if owner is not None:
+            sql += " AND user_id = ?"
+            params.append(owner)
         if client_id is not None:
-            sql += " AND (client_id = ? OR client_id IS NULL)"
+            sql += " AND client_id = ?"
             params.append(client_id)
         if not include_read:
             sql += " AND is_read = 0"
@@ -175,7 +180,7 @@ class FreshJobsRepository:
 
     def mark_alert_read(self, alert_id: int) -> None:
         with get_connection() as conn:
-            conn.execute("UPDATE job_alerts SET is_read = 1 WHERE id = ?", (alert_id,))
+            conn.execute("UPDATE job_alerts SET is_read = 1 WHERE id = ? AND user_id IS ?", (alert_id, data_owner()))
             conn.commit()
 
     def get_schedule(self) -> dict[str, Any]:
@@ -230,7 +235,7 @@ class FreshJobsRepository:
                             description = ?, salary_min = ?, salary_max = ?, posted_at = ?,
                             expiration_status = ?, raw_payload = ?, discovery_state = 'updated',
                             updated_at = CURRENT_TIMESTAMP
-                        WHERE id = ?
+                        WHERE id = ? AND user_id IS ?
                         """,
                         (
                             fields["description"],
@@ -240,6 +245,7 @@ class FreshJobsRepository:
                             fields["expiration_status"],
                             fields["raw_payload"],
                             duplicate["id"],
+                            data_owner(),
                         ),
                     )
                     conn.commit()
@@ -248,11 +254,11 @@ class FreshJobsRepository:
             cursor = conn.execute(
                 """
                 INSERT INTO discovered_jobs (
-                    source, source_job_id, company, title, location, remote_type, salary_min,
+                    user_id, source, source_job_id, company, title, location, remote_type, salary_min,
                     salary_max, employment_type, schedule, description, posted_at, discovered_at,
                     apply_url, expires_at, expiration_status, raw_payload, normalized_key
                 ) VALUES (
-                    :source, :source_job_id, :company, :title, :location, :remote_type, :salary_min,
+                    :user_id, :source, :source_job_id, :company, :title, :location, :remote_type, :salary_min,
                     :salary_max, :employment_type, :schedule, :description, :posted_at, :discovered_at,
                     :apply_url, :expires_at, :expiration_status, :raw_payload, :normalized_key
                 )
@@ -267,27 +273,28 @@ class FreshJobsRepository:
             rows = conn.execute(
                 """
                 SELECT * FROM discovered_jobs
-                WHERE (source = ? AND source_job_id = ?)
+                WHERE user_id IS ? AND ((source = ? AND source_job_id = ?)
                    OR apply_url = ?
-                   OR normalized_key = ?
+                   OR normalized_key = ?)
                 ORDER BY id LIMIT 1
                 """,
-                (fields["source"], fields["source_job_id"], fields["apply_url"], fields["normalized_key"]),
+                (data_owner(), fields["source"], fields["source_job_id"], fields["apply_url"], fields["normalized_key"]),
             ).fetchall()
         return dict(rows[0]) if rows else None
 
     def save_match(self, client_id: int, job_id: int, match: dict[str, Any]) -> None:
         with get_connection() as conn:
-            conn.execute("DELETE FROM job_matches WHERE client_id = ? AND discovered_job_id = ?", (client_id, job_id))
+            conn.execute("DELETE FROM job_matches WHERE client_id = ? AND discovered_job_id = ? AND user_id IS ?", (client_id, job_id, data_owner()))
             conn.execute(
                 """
                 INSERT INTO job_matches (
-                    client_id, discovered_job_id, score, breakdown, matched_skills, missing_qualifications
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    client_id, discovered_job_id, user_id, score, breakdown, matched_skills, missing_qualifications
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     client_id,
                     job_id,
+                    data_owner(),
                     int(match["score"]),
                     json.dumps(match.get("breakdown", {})),
                     json.dumps(match.get("matched_skills", [])),
@@ -310,16 +317,16 @@ class FreshJobsRepository:
                 FROM job_matches jm
                 JOIN discovered_jobs dj ON dj.id = jm.discovered_job_id
                 LEFT JOIN saved_jobs sj ON sj.discovered_job_id = dj.id AND sj.client_id = jm.client_id
-                WHERE jm.client_id = ?
+                WHERE jm.client_id = ? AND jm.user_id IS ? AND dj.user_id IS ?
                 ORDER BY {order}
                 """,
-                (client_id,),
+                (client_id, data_owner(), data_owner()),
             ).fetchall()
         return [parse_job_match(dict(row)) for row in rows]
 
     def get_job(self, job_id: int) -> dict[str, Any] | None:
         with get_connection() as conn:
-            row = conn.execute("SELECT * FROM discovered_jobs WHERE id = ?", (job_id,)).fetchone()
+            row = conn.execute("SELECT * FROM discovered_jobs WHERE id = ? AND user_id IS ?", (job_id, data_owner())).fetchone()
         return dict(row) if row else None
 
     def set_job_status(self, client_id: int, job_id: int, status: str, notes: str = "") -> None:
@@ -328,20 +335,20 @@ class FreshJobsRepository:
         with get_connection() as conn:
             conn.execute(
                 """
-                INSERT INTO saved_jobs (client_id, discovered_job_id, status, notes)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO saved_jobs (client_id, discovered_job_id, user_id, status, notes)
+                VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(client_id, discovered_job_id)
                 DO UPDATE SET status = excluded.status, notes = excluded.notes, updated_at = CURRENT_TIMESTAMP
                 """,
-                (client_id, job_id, status, notes),
+                (client_id, job_id, data_owner(), status, notes),
             )
             conn.commit()
 
     def get_saved_status(self, client_id: int, job_id: int) -> str:
         with get_connection() as conn:
             row = conn.execute(
-                "SELECT status FROM saved_jobs WHERE client_id = ? AND discovered_job_id = ?",
-                (client_id, job_id),
+                "SELECT status FROM saved_jobs WHERE client_id = ? AND discovered_job_id = ? AND user_id IS ?",
+                (client_id, job_id, data_owner()),
             ).fetchone()
         return str(row["status"]) if row else "discovered"
 
@@ -350,12 +357,13 @@ class FreshJobsRepository:
             cursor = conn.execute(
                 """
                 INSERT INTO application_packages (
-                    client_id, discovered_job_id, tailored_resume, cover_letter, ats_keywords, status
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    client_id, discovered_job_id, user_id, tailored_resume, cover_letter, ats_keywords, status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     client_id,
                     job_id,
+                    data_owner(),
                     json.dumps(package.get("tailored_resume", {})),
                     package.get("cover_letter", ""),
                     json.dumps(package.get("ats_keywords", [])),
@@ -370,10 +378,10 @@ class FreshJobsRepository:
             row = conn.execute(
                 """
                 SELECT * FROM application_packages
-                WHERE client_id = ? AND discovered_job_id = ?
+                WHERE client_id = ? AND discovered_job_id = ? AND user_id IS ?
                 ORDER BY id DESC LIMIT 1
                 """,
-                (client_id, job_id),
+                (client_id, job_id, data_owner()),
             ).fetchone()
         if row is None:
             return None
@@ -394,12 +402,13 @@ class FreshJobsRepository:
             conn.execute(
                 """
                 INSERT INTO imported_jobs (
-                    client_id, discovered_job_id, source_url, title, company, location, salary, posted_at, description
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    client_id, discovered_job_id, user_id, source_url, title, company, location, salary, posted_at, description
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     client_id,
                     job_id,
+                    data_owner(),
                     source_url,
                     job.get("title", ""),
                     job.get("company", ""),
@@ -416,6 +425,7 @@ class FreshJobsRepository:
 def serialize_profile(client_id: int, data: dict[str, Any]) -> dict[str, Any]:
     return {
         "client_id": client_id,
+        "user_id": data_owner(),
         "target_role": str(data.get("target_role", "")).strip(),
         "location": str(data.get("location", "")).strip(),
         "commute_radius": int(data.get("commute_radius") or 25),
@@ -439,6 +449,7 @@ def parse_profile(profile: dict[str, Any]) -> dict[str, Any]:
 
 def serialize_job(job: dict[str, Any]) -> dict[str, Any]:
     return {
+        "user_id": data_owner(),
         "source": job.get("source", "mock"),
         "source_job_id": job.get("source_job_id", ""),
         "company": job.get("company", ""),

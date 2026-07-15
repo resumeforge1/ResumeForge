@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}{% if first_admin %}First Run Setup{% else %}Register{% endif %} - ResumeForge{% endblock %}
+{% block content %}
+<section class="hero">
+  <div>
+    <span class="eyebrow">{% if first_admin %}First run setup{% else %}Team account{% endif %}</span>
+    <h1>{% if first_admin %}Create the administrator account{% else %}Create your ResumeForge account{% endif %}</h1>
+    <p class="lede">Passwords are stored with PBKDF2 hashing. No plain text passwords are saved.</p>
+  </div>
+</section>
+
+<section class="panel auth-panel">
+  {% if error %}<div class="notice error">{{ error }}</div>{% endif %}
+  <form method="post" action="/register" class="grid two">
+    <label>Display name<input name="username" required autocomplete="name"></label>
+    <label>Email<input name="email" type="email" required autocomplete="email"></label>
+    <label>Password<input name="password" type="password" minlength="8" required autocomplete="new-password"></label>
+    <label>Confirm password<input name="password_confirm" type="password" minlength="8" required autocomplete="new-password"></label>
+    <label class="check-row"><input name="remember_me" type="checkbox" value="1"> Remember me</label>
+    <div class="actions">
+      <button class="button primary" type="submit">{% if first_admin %}Create Admin{% else %}Register{% endif %}</button>
+      {% if not first_admin %}<a class="button secondary" href="/login">Log In</a>{% endif %}
+    </div>
+  </form>
+</section>
+{% endblock %}

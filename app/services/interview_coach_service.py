@@ -11,6 +11,7 @@ from reportlab.pdfgen import canvas
 
 import app.document_generator as document_generator
 from app.database import get_connection
+from app.repositories.client_repository import data_owner
 from app.services.application_package_service import build_match_analysis
 from app.services.dashboard_service import resume_readiness_score
 from app.template_registry import get_template_config
@@ -168,10 +169,10 @@ def start_session(client_id: int | None, job_id: int | None, mode: str, question
     with get_connection() as conn:
         cursor = conn.execute(
             """
-            INSERT INTO interview_coach_sessions (client_id, discovered_job_id, mode, questions_json)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO interview_coach_sessions (client_id, discovered_job_id, user_id, mode, questions_json)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (client_id, job_id, mode, json.dumps(questions)),
+            (client_id, job_id, data_owner(), mode, json.dumps(questions)),
         )
         conn.commit()
         return int(cursor.lastrowid)
@@ -179,7 +180,7 @@ def start_session(client_id: int | None, job_id: int | None, mode: str, question
 
 def get_session(session_id: int) -> dict[str, Any] | None:
     with get_connection() as conn:
-        row = conn.execute("SELECT * FROM interview_coach_sessions WHERE id = ?", (session_id,)).fetchone()
+        row = conn.execute("SELECT * FROM interview_coach_sessions WHERE id = ? AND user_id IS ?", (session_id, data_owner())).fetchone()
     if not row:
         return None
     session = dict(row)
@@ -192,8 +193,8 @@ def get_session(session_id: int) -> dict[str, Any] | None:
 def session_answers(session_id: int) -> list[dict[str, Any]]:
     with get_connection() as conn:
         rows = conn.execute(
-            "SELECT * FROM interview_coach_answers WHERE session_id = ? ORDER BY question_index",
-            (session_id,),
+            "SELECT * FROM interview_coach_answers WHERE session_id = ? AND user_id IS ? ORDER BY question_index",
+            (session_id, data_owner()),
         ).fetchall()
     answers = []
     for row in rows:
@@ -207,13 +208,13 @@ def save_answer(session_id: int, question_index: int, answer: str, review: dict[
     with get_connection() as conn:
         conn.execute(
             """
-            INSERT INTO interview_coach_answers (session_id, question_index, answer, review_json, completed)
-            VALUES (?, ?, ?, ?, 1)
+            INSERT INTO interview_coach_answers (session_id, question_index, user_id, answer, review_json, completed)
+            VALUES (?, ?, ?, ?, ?, 1)
             ON CONFLICT(session_id, question_index)
             DO UPDATE SET answer = excluded.answer, review_json = excluded.review_json,
                 completed = 1, updated_at = CURRENT_TIMESTAMP
             """,
-            (session_id, question_index, answer, json.dumps(review)),
+            (session_id, question_index, data_owner(), answer, json.dumps(review)),
         )
         conn.commit()
 
@@ -226,13 +227,13 @@ def move_session(session_id: int, direction: str) -> None:
     max_index = max(0, len(session["questions"]) - 1)
     next_index = min(max_index, current + 1) if direction == "next" else max(0, current - 1)
     with get_connection() as conn:
-        conn.execute("UPDATE interview_coach_sessions SET current_index = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (next_index, session_id))
+        conn.execute("UPDATE interview_coach_sessions SET current_index = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id IS ?", (next_index, session_id, data_owner()))
         conn.commit()
 
 
 def mark_completed(session_id: int) -> None:
     with get_connection() as conn:
-        conn.execute("UPDATE interview_coach_sessions SET completed = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (session_id,))
+        conn.execute("UPDATE interview_coach_sessions SET completed = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id IS ?", (session_id, data_owner()))
         conn.commit()
 
 
@@ -308,17 +309,17 @@ def follow_up_templates(client: dict[str, Any] | None, job: dict[str, Any] | Non
 def coach_dashboard_widgets(client_id: int | None = None) -> dict[str, Any]:
     with get_connection() as conn:
         sessions = conn.execute(
-            "SELECT * FROM interview_coach_sessions WHERE (? IS NULL OR client_id = ?) ORDER BY updated_at DESC LIMIT 5",
-            (client_id, client_id),
+            "SELECT * FROM interview_coach_sessions WHERE (? IS NULL OR client_id = ?) AND user_id IS ? ORDER BY updated_at DESC LIMIT 5",
+            (client_id, client_id, data_owner()),
         ).fetchall()
         avg_row = conn.execute(
             """
             SELECT AVG(json_extract(review_json, '$.overall')) AS average_score
             FROM interview_coach_answers a
             JOIN interview_coach_sessions s ON s.id = a.session_id
-            WHERE (? IS NULL OR s.client_id = ?)
+            WHERE (? IS NULL OR s.client_id = ?) AND s.user_id IS ?
             """,
-            (client_id, client_id),
+            (client_id, client_id, data_owner()),
         ).fetchone()
     return {
         "recent_practice_sessions": [dict(row) for row in sessions],
@@ -371,8 +372,8 @@ def export_summary_pdf(session: dict[str, Any]) -> str:
 def record_export(session_id: int, export_type: str, filename: str) -> None:
     with get_connection() as conn:
         conn.execute(
-            "INSERT INTO interview_coach_exports (session_id, export_type, filename) VALUES (?, ?, ?)",
-            (session_id, export_type, filename),
+            "INSERT INTO interview_coach_exports (session_id, export_type, filename, user_id) VALUES (?, ?, ?, ?)",
+            (session_id, export_type, filename, data_owner()),
         )
         conn.commit()
 
@@ -380,8 +381,8 @@ def record_export(session_id: int, export_type: str, filename: str) -> None:
 def latest_session(client_id: int | None = None) -> dict[str, Any] | None:
     with get_connection() as conn:
         row = conn.execute(
-            "SELECT id FROM interview_coach_sessions WHERE (? IS NULL OR client_id = ?) ORDER BY updated_at DESC LIMIT 1",
-            (client_id, client_id),
+            "SELECT id FROM interview_coach_sessions WHERE (? IS NULL OR client_id = ?) AND user_id IS ? ORDER BY updated_at DESC LIMIT 1",
+            (client_id, client_id, data_owner()),
         ).fetchone()
     return get_session(int(row["id"])) if row else None
 

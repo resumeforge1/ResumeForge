@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs
 
 import json
 import logging
+import hmac
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
@@ -37,6 +40,23 @@ from app.services.application_package_service import (
     build_application_package,
     export_application_package,
     package_from_form,
+)
+from app.services.auth_service import (
+    CSRF_COOKIE,
+    SESSION_COOKIE,
+    authenticate,
+    create_password_reset_token,
+    create_session,
+    create_user,
+    assign_legacy_data_to_admin,
+    get_session as get_auth_session,
+    get_user_preferences,
+    revoke_session,
+    save_user_preferences,
+    touch_session,
+    user_count,
+    users_exist,
+    verify_password,
 )
 from app.services.fresh_jobs import (
     MockJobProvider,
@@ -95,6 +115,53 @@ fresh_jobs_repo = FreshJobsRepository()
 settings_repo = SettingsRepository()
 job_provider = MockJobProvider()
 job_providers = [job_provider, USAJobsProvider()]
+CURRENT_USER_ID: ContextVar[int | None] = ContextVar("current_user_id", default=None)
+
+
+PUBLIC_PATH_PREFIXES = ("/static", "/outputs", "/download", "/health", "/favicon.ico")
+PUBLIC_PATHS = {"/login", "/register", "/logout", "/forgot-password", "/setup"}
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next: Any) -> Response:
+    init_required = not users_exist()
+    token = request.cookies.get(SESSION_COOKIE)
+    session = get_auth_session(token) if token else None
+    request.state.auth_enabled = not init_required
+    request.state.current_user = session
+    request.state.csrf_token = session.get("csrf_token") if session else ""
+    CURRENT_USER_ID.set(int(session["user_id"]) if session else None)
+
+    path = request.url.path
+    public_path = path in PUBLIC_PATHS or any(path.startswith(prefix) for prefix in PUBLIC_PATH_PREFIXES)
+    if not init_required and not session and not public_path:
+        return RedirectResponse(url=f"/login?next={path}", status_code=303)
+
+    if not init_required and session and request.method == "POST" and path not in {"/login", "/register", "/forgot-password"}:
+        csrf_cookie = request.cookies.get(CSRF_COOKIE)
+        submitted_csrf = request.headers.get("x-csrf-token", "")
+        if not submitted_csrf:
+            body = await request.body()
+            submitted_csrf = extract_csrf_from_body(body, request.headers.get("content-type", ""))
+
+            async def receive() -> dict[str, Any]:
+                return {"type": "http.request", "body": body, "more_body": False}
+
+            request._receive = receive
+        expected = str(session.get("csrf_token", ""))
+        if not (csrf_cookie and submitted_csrf and hmac.compare_digest(csrf_cookie, expected) and hmac.compare_digest(submitted_csrf, expected)):
+            return Response("CSRF validation failed.", status_code=403)
+
+    response = await call_next(request)
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    if session and token:
+        touch_session(token)
+        secure_cookie = request.url.scheme == "https"
+        response.set_cookie(CSRF_COOKIE, session["csrf_token"], httponly=False, samesite="lax", secure=secure_cookie)
+    return response
 
 
 @app.on_event("startup")
@@ -134,11 +201,131 @@ def health() -> dict[str, Any]:
     }
 
 
+@app.get("/setup", response_class=HTMLResponse)
+def setup_page(request: Request) -> HTMLResponse:
+    if users_exist():
+        return RedirectResponse(url="/login", status_code=303)
+    return templates.TemplateResponse("auth_register.html", {"request": request, "first_admin": True, "error": ""})
+
+
+@app.get("/register", response_class=HTMLResponse)
+def register_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse("auth_register.html", {"request": request, "first_admin": not users_exist(), "error": ""})
+
+
+@app.post("/register")
+async def register_user(request: Request) -> Response:
+    form = await request.form()
+    first_admin = not users_exist()
+    try:
+        password = str(form.get("password", ""))
+        if password != str(form.get("password_confirm", "")):
+            raise ValueError("Password confirmation does not match.")
+        user_id = create_user(
+            str(form.get("email", "")),
+            str(form.get("username", "")),
+            password,
+            is_admin=first_admin,
+        )
+    except ValueError as exc:
+        return templates.TemplateResponse(
+            "auth_register.html",
+            {"request": request, "first_admin": first_admin, "error": str(exc)},
+            status_code=400,
+        )
+    if first_admin:
+        assign_legacy_data_to_admin(user_id)
+    session = create_session(
+        user_id,
+        remember_me=bool(form.get("remember_me")),
+        user_agent=request.headers.get("user-agent", ""),
+        ip_address=request.client.host if request.client else "",
+    )
+    response = RedirectResponse(url="/", status_code=303)
+    set_auth_cookies(response, session, request.url.scheme == "https")
+    return response
+
+
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request) -> HTMLResponse:
+    if not users_exist():
+        return RedirectResponse(url="/setup", status_code=303)
+    return templates.TemplateResponse("auth_login.html", {"request": request, "error": "", "next_url": request.query_params.get("next", "/")})
+
+
+@app.post("/login")
+async def login_user(request: Request) -> Response:
+    form = await request.form()
+    email = str(form.get("email", ""))
+    password = str(form.get("password", ""))
+    user = authenticate(email, password, request.headers.get("user-agent", ""), request.client.host if request.client else "")
+    if not user:
+        return templates.TemplateResponse(
+            "auth_login.html",
+            {"request": request, "error": "Invalid email or password.", "next_url": str(form.get("next_url", "/"))},
+            status_code=400,
+        )
+    session = create_session(int(user["id"]), remember_me=bool(form.get("remember_me")), user_agent=request.headers.get("user-agent", ""), ip_address=request.client.host if request.client else "")
+    response = RedirectResponse(url=str(form.get("next_url", "/") or "/"), status_code=303)
+    set_auth_cookies(response, session, request.url.scheme == "https")
+    return response
+
+
+@app.post("/logout")
+def logout(request: Request) -> RedirectResponse:
+    revoke_session(request.cookies.get(SESSION_COOKIE))
+    response = RedirectResponse(url="/login?message=Logged out", status_code=303)
+    response.delete_cookie(SESSION_COOKIE, samesite="lax", secure=request.url.scheme == "https")
+    response.delete_cookie(CSRF_COOKIE, samesite="lax", secure=request.url.scheme == "https")
+    return response
+
+
+@app.get("/forgot-password", response_class=HTMLResponse)
+def forgot_password_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse("forgot_password.html", {"request": request, "message": "", "reset_token": ""})
+
+
+@app.post("/forgot-password", response_class=HTMLResponse)
+async def forgot_password(request: Request) -> HTMLResponse:
+    form = await request.form()
+    create_password_reset_token(str(form.get("email", "")))
+    message = "If the account exists, a local reset token was created for this demo flow."
+    return templates.TemplateResponse("forgot_password.html", {"request": request, "message": message})
+
+
+@app.get("/profile", response_class=HTMLResponse)
+def profile_page(request: Request) -> HTMLResponse:
+    user = current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    return templates.TemplateResponse(
+        "profile.html",
+        {
+            "request": request,
+            "user": user,
+            "preferences": get_user_preferences(int(user["user_id"])),
+            "industry_templates": list_template_configs(),
+            "message": request.query_params.get("message", ""),
+        },
+    )
+
+
+@app.post("/profile")
+async def update_profile(request: Request) -> RedirectResponse:
+    user = current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    form = await request.form()
+    save_user_preferences(int(user["user_id"]), dict(form))
+    return RedirectResponse(url="/profile?message=Profile updated", status_code=303)
+
+
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request) -> HTMLResponse:
     query = request.query_params.get("q", "")
-    clients = client_repo.search(query)
-    selected_client = client_repo.get(int(clients[0]["id"])) if clients else None
+    user_id = current_user_id(request)
+    clients = client_repo.search(query, user_id=user_id)
+    selected_client = client_repo.get(int(clients[0]["id"]), user_id=user_id) if clients else None
     return templates.TemplateResponse(
         "home.html",
         {
@@ -148,7 +335,7 @@ def home(request: Request) -> HTMLResponse:
             "sample": SAMPLE_ALFREDO_CRUZ_CDL,
             "industry_templates": list_template_configs(),
             "settings": settings_repo.get(),
-            "stats": dashboard_stats(),
+            "stats": dashboard_stats(user_id),
             "career": career_dashboard(selected_client),
             "copilot": build_copilot(selected_client),
             "interview_coach": coach_dashboard_widgets((selected_client or {}).get("id")),
@@ -201,6 +388,7 @@ async def import_client_resume(request: Request, resume_file: UploadFile = File(
 async def create_client(request: Request) -> RedirectResponse:
     form = await request.form()
     data = parse_intake_form(form)
+    data["user_id"] = current_user_id(request)
     if not data["full_name"]:
         raise HTTPException(status_code=400, detail="Full name is required.")
     client_id = save_client(data)
@@ -217,8 +405,10 @@ async def live_preview(request: Request) -> HTMLResponse:
 
 
 @app.post("/clients/sample")
-def create_sample_client() -> RedirectResponse:
-    client_id = save_client(SAMPLE_ALFREDO_CRUZ_CDL)
+def create_sample_client(request: Request) -> RedirectResponse:
+    sample = dict(SAMPLE_ALFREDO_CRUZ_CDL)
+    sample["user_id"] = current_user_id(request)
+    client_id = save_client(sample)
     return RedirectResponse(url=f"/clients/{client_id}/preview", status_code=303)
 
 
@@ -237,14 +427,15 @@ def fresh_jobs_page(
     new_only: bool = False,
 ) -> HTMLResponse:
     sync_job_providers()
-    client = client_repo.get(client_id) if client_id else first_available_client()
+    user_id = current_user_id(request)
+    client = client_repo.get(client_id, user_id=user_id) if client_id else first_available_client(user_id)
     if client is None:
         return templates.TemplateResponse(
             "fresh_jobs.html",
             {
                 "request": request,
                 "client": None,
-                "clients": client_repo.search("", include_archived=True),
+                "clients": client_repo.search("", include_archived=True, user_id=user_id),
                 "profile": None,
                 "candidate_profile": None,
                 "jobs": [],
@@ -267,7 +458,7 @@ def fresh_jobs_page(
         {
             "request": request,
             "client": client,
-            "clients": client_repo.search("", include_archived=True),
+            "clients": client_repo.search("", include_archived=True, user_id=user_id),
             "profile": profile,
             "candidate_profile": extract_candidate_profile(client),
             "jobs": jobs,
@@ -284,13 +475,13 @@ def fresh_jobs_page(
 
 @app.get("/copilot", response_class=HTMLResponse)
 def copilot_page(request: Request, client_id: int | None = None) -> HTMLResponse:
-    client = client_repo.get(client_id) if client_id else first_available_client()
+    client = client_repo.get(client_id, user_id=current_user_id(request)) if client_id else first_available_client(current_user_id(request))
     return templates.TemplateResponse(
         "copilot.html",
         {
             "request": request,
             "client": client,
-            "clients": client_repo.search("", include_archived=True),
+            "clients": client_repo.search("", include_archived=True, user_id=current_user_id(request)),
             "copilot": build_copilot(client),
         },
     )
@@ -529,14 +720,15 @@ def export_application_package_route(package_id: int, export_type: str) -> FileR
 
 @app.get("/applications", response_class=HTMLResponse)
 def applications_page(request: Request, client_id: int | None = None) -> HTMLResponse:
-    client = client_repo.get(client_id) if client_id else first_available_client()
+    user_id = current_user_id(request)
+    client = client_repo.get(client_id, user_id=user_id) if client_id else first_available_client(user_id)
     dashboard = career_dashboard(client)
     return templates.TemplateResponse(
         "applications.html",
         {
             "request": request,
             "client": client,
-            "clients": client_repo.search("", include_archived=True),
+            "clients": client_repo.search("", include_archived=True, user_id=user_id),
             "pipeline": dashboard["pipeline"],
             "pipeline_statuses": PIPELINE_STATUSES,
         },
@@ -545,7 +737,8 @@ def applications_page(request: Request, client_id: int | None = None) -> HTMLRes
 
 @app.get("/interview-prep", response_class=HTMLResponse)
 def interview_prep_page(request: Request, client_id: int | None = None, job_id: int | None = None) -> HTMLResponse:
-    client = client_repo.get(client_id) if client_id else first_available_client()
+    user_id = current_user_id(request)
+    client = client_repo.get(client_id, user_id=user_id) if client_id else first_available_client(user_id)
     if client is None:
         prep = generate_interview_prep({}, None)
         notes = ""
@@ -562,7 +755,7 @@ def interview_prep_page(request: Request, client_id: int | None = None, job_id: 
         {
             "request": request,
             "client": client,
-            "clients": client_repo.search("", include_archived=True),
+            "clients": client_repo.search("", include_archived=True, user_id=user_id),
             "job": job,
             "match": match,
             "prep": prep,
@@ -580,7 +773,8 @@ def interview_coach_page(
     mode: str = "General Interview",
     session_id: int | None = None,
 ) -> HTMLResponse:
-    client = client_repo.get(client_id) if client_id else first_available_client()
+    user_id = current_user_id(request)
+    client = client_repo.get(client_id, user_id=user_id) if client_id else first_available_client(user_id)
     job = fresh_jobs_repo.get_job(job_id) if job_id else (first_preppable_job(int(client["id"])) if client else None)
     session = get_session(session_id) if session_id else latest_session(int(client["id"])) if client else None
     context = build_interview_context(client, job, mode)
@@ -592,7 +786,7 @@ def interview_coach_page(
         {
             "request": request,
             "client": client,
-            "clients": client_repo.search("", include_archived=True),
+            "clients": client_repo.search("", include_archived=True, user_id=user_id),
             "job": job,
             "modes": INTERVIEW_MODES,
             "mode": mode,
@@ -615,7 +809,7 @@ async def start_interview_coach(request: Request) -> RedirectResponse:
     form = await request.form()
     client_id = int(form.get("client_id", 0)) or None
     job_id = int(form.get("job_id", 0)) or None
-    client = client_repo.get(client_id) if client_id else None
+    client = client_repo.get(client_id, user_id=current_user_id(request)) if client_id else None
     job = fresh_jobs_repo.get_job(job_id) if job_id else None
     mode = str(form.get("mode", "General Interview"))
     questions = generate_questions(build_interview_context(client, job, mode))
@@ -631,7 +825,7 @@ async def review_interview_answer(session_id: int, request: Request) -> Redirect
         raise HTTPException(status_code=404, detail="Interview session not found.")
     question_index = int(form.get("question_index", session.get("current_index", 0)))
     answer = str(form.get("answer", ""))
-    client = client_repo.get(int(session["client_id"])) if session.get("client_id") else None
+    client = client_repo.get(int(session["client_id"]), user_id=current_user_id()) if session.get("client_id") else None
     job = fresh_jobs_repo.get_job(int(session["discovered_job_id"])) if session.get("discovered_job_id") else None
     context = build_interview_context(client, job, session["mode"])
     review = review_answer(answer, session["questions"][question_index]["text"], context)
@@ -703,6 +897,7 @@ def client_detail(request: Request, client_id: int) -> HTMLResponse:
 
 @app.post("/clients/{client_id}/notes")
 async def add_client_note(client_id: int, request: Request) -> RedirectResponse:
+    require_client(client_id)
     form = await request.form()
     client_repo.add_note(client_id, str(form.get("note", "")))
     return RedirectResponse(url=f"/clients/{client_id}", status_code=303)
@@ -710,6 +905,7 @@ async def add_client_note(client_id: int, request: Request) -> RedirectResponse:
 
 @app.post("/clients/{client_id}/applications")
 async def add_application(client_id: int, request: Request) -> RedirectResponse:
+    require_client(client_id)
     form = await request.form()
     try:
         application_repo.create(client_id, {key: str(value) for key, value in form.items()})
@@ -720,6 +916,7 @@ async def add_application(client_id: int, request: Request) -> RedirectResponse:
 
 @app.post("/clients/{client_id}/applications/{application_id}/edit")
 async def edit_application(client_id: int, application_id: int, request: Request) -> RedirectResponse:
+    require_client(client_id)
     form = await request.form()
     try:
         application_repo.update(application_id, {key: str(value) for key, value in form.items()})
@@ -730,30 +927,35 @@ async def edit_application(client_id: int, application_id: int, request: Request
 
 @app.post("/clients/{client_id}/applications/{application_id}/delete")
 def delete_application(client_id: int, application_id: int) -> RedirectResponse:
+    require_client(client_id)
     application_repo.delete(application_id)
     return RedirectResponse(url=f"/clients/{client_id}", status_code=303)
 
 
 @app.post("/clients/{client_id}/duplicate")
 def duplicate_client(client_id: int) -> RedirectResponse:
+    require_client(client_id)
     new_id = client_repo.duplicate(client_id)
     return RedirectResponse(url=f"/clients/{new_id}/preview", status_code=303)
 
 
 @app.post("/clients/{client_id}/archive")
 def archive_client(client_id: int) -> RedirectResponse:
+    require_client(client_id)
     client_repo.set_archived(client_id, True)
     return RedirectResponse(url="/", status_code=303)
 
 
 @app.post("/clients/{client_id}/restore")
 def restore_client(client_id: int) -> RedirectResponse:
+    require_client(client_id)
     client_repo.restore(client_id)
     return RedirectResponse(url=f"/clients/{client_id}", status_code=303)
 
 
 @app.post("/clients/{client_id}/delete")
 def delete_client(client_id: int) -> RedirectResponse:
+    require_client(client_id)
     client_repo.soft_delete(client_id)
     return RedirectResponse(url="/", status_code=303)
 
@@ -793,8 +995,8 @@ async def analyze_client_job(request: Request, client_id: int) -> HTMLResponse:
     result = analyze_job_description(job_description, client)
     with get_connection() as conn:
         conn.execute(
-            "INSERT INTO jd_analyses (client_id, job_description, result) VALUES (?, ?, ?)",
-            (client_id, job_description, json.dumps(result)),
+            "INSERT INTO jd_analyses (client_id, user_id, job_description, result) VALUES (?, ?, ?, ?)",
+            (client_id, current_user_id(request), job_description, json.dumps(result)),
         )
         conn.commit()
     return templates.TemplateResponse(
@@ -889,8 +1091,44 @@ def download_file(filename: str) -> FileResponse:
     return FileResponse(path, filename=filename)
 
 
+def set_auth_cookies(response: Response, session: dict[str, Any], secure: bool = False) -> None:
+    response.set_cookie(SESSION_COOKIE, session["token"], httponly=True, samesite="lax", secure=secure, expires=session["expires_at"])
+    response.set_cookie(CSRF_COOKIE, session["csrf_token"], httponly=False, samesite="lax", secure=secure, expires=session["expires_at"])
+
+
+def extract_csrf_from_body(body: bytes, content_type: str) -> str:
+    if not body:
+        return ""
+    if "application/x-www-form-urlencoded" in content_type:
+        parsed = parse_qs(body.decode("utf-8", errors="ignore"))
+        return (parsed.get("_csrf") or [""])[0]
+    if "multipart/form-data" in content_type:
+        marker = b'name="_csrf"'
+        index = body.find(marker)
+        if index == -1:
+            return ""
+        start = body.find(b"\r\n\r\n", index)
+        if start == -1:
+            return ""
+        start += 4
+        end = body.find(b"\r\n", start)
+        return body[start:end].decode("utf-8", errors="ignore").strip() if end != -1 else ""
+    return ""
+
+
+def current_user(request: Request) -> dict[str, Any] | None:
+    return getattr(request.state, "current_user", None)
+
+
+def current_user_id(request: Request | None = None) -> int | None:
+    if request is not None:
+        user = current_user(request)
+        return int(user["user_id"]) if user else None
+    return CURRENT_USER_ID.get()
+
+
 def require_client(client_id: int) -> dict[str, Any]:
-    client = client_repo.get(client_id)
+    client = client_repo.get(client_id, user_id=current_user_id())
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found.")
     return client
@@ -970,11 +1208,11 @@ def match_for_job(client_id: int, job_id: int) -> dict[str, Any] | None:
     return data
 
 
-def first_available_client() -> dict[str, Any] | None:
-    clients = client_repo.search("", include_archived=True)
+def first_available_client(user_id: int | None = None) -> dict[str, Any] | None:
+    clients = client_repo.search("", include_archived=True, user_id=user_id)
     if not clients:
         return None
-    return client_repo.get(int(clients[0]["id"]))
+    return client_repo.get(int(clients[0]["id"]), user_id=user_id)
 
 
 def default_job_search_profile(client: dict[str, Any]) -> dict[str, Any]:

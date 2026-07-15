@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.database import get_connection
+from app.repositories.client_repository import data_owner
 
 
 APPLICATION_STATUSES = {
@@ -26,8 +27,8 @@ class ApplicationRepository:
             return [
                 dict(row)
                 for row in conn.execute(
-                    "SELECT * FROM application_tracker WHERE client_id = ? ORDER BY id DESC",
-                    (client_id,),
+                    "SELECT * FROM application_tracker WHERE client_id = ? AND user_id IS ? ORDER BY id DESC",
+                    (client_id, data_owner()),
                 ).fetchall()
             ]
 
@@ -37,11 +38,12 @@ class ApplicationRepository:
             conn.execute(
                 """
                 INSERT INTO application_tracker
-                    (client_id, company, position, salary, status, date_applied, notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (client_id, user_id, company, position, salary, status, date_applied, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     client_id,
+                    data_owner(),
                     data.get("company", ""),
                     data.get("position", ""),
                     data.get("salary", ""),
@@ -65,7 +67,7 @@ class ApplicationRepository:
                     date_applied = ?,
                     notes = ?,
                     updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
+                WHERE id = ? AND user_id IS ?
                 """,
                 (
                     data.get("company", ""),
@@ -75,13 +77,14 @@ class ApplicationRepository:
                     data.get("date_applied", ""),
                     data.get("notes", ""),
                     application_id,
+                    data_owner(),
                 ),
             )
             conn.commit()
 
     def delete(self, application_id: int) -> None:
         with get_connection() as conn:
-            conn.execute("DELETE FROM application_tracker WHERE id = ?", (application_id,))
+            conn.execute("DELETE FROM application_tracker WHERE id = ? AND user_id IS ?", (application_id, data_owner()))
             conn.commit()
 
 

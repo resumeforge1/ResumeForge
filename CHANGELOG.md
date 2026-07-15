@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.17.0-dev - Unreleased
+
+- Added Phase 8 Authentication and Multi-User Accounts.
+- Added first-run setup wizard, administrator account creation, register/login/logout routes, forgot-password placeholder flow, and profile preferences.
+- Added bcrypt password hashing and verification helpers; plain text passwords are never stored.
+- Added hashed session/reset token storage, idle and absolute session expiration, remember-me support, session rotation after login, login audit logging, temporary lockout, and CSRF form validation.
+- Added additive SQLite tables for users, user sessions, password reset tokens, user preferences, login audit events, and auth migration state.
+- Added explicit one-time legacy data claiming for the first administrator instead of assuming unowned records belong to any logged-in user.
+- Added user scoping for clients, applications, jobs, packages, interview prep/coach data, dashboards, and primary client selection while preserving legacy empty-database workflows.
+- Added authentication regression tests for registration, login, logout, route protection, session expiration, password hashing, user isolation, admin creation, profile preferences, legacy migration, IDOR protection, package export isolation, job isolation, interview session isolation, and browser-submitted ownership tampering.
+
 ## 0.16.0-dev - Unreleased
 
 - Added Phase 7 AI Interview Coach at `/interview-coach`.

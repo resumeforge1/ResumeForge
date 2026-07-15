@@ -2,7 +2,7 @@
 
 ResumeForge is a full-stack resume workflow app for generating client resume packages from intake data and preparing user-reviewed job applications.
 
-Current version: **0.16.0-dev**
+Current version: **0.17.0-dev**
 
 It creates:
 
@@ -97,7 +97,7 @@ tests/
 4. Review the resume preview.
 5. Generate and download the DOCX/PDF package.
 
-No authentication or paid APIs are required for this MVP.
+On first run, create the administrator account from the setup wizard. After that, anonymous users are redirected to login and application data is scoped to the logged-in account. No paid APIs are required.
 
 ## Production-Ready Modules
 
@@ -117,6 +117,7 @@ ResumeForge now includes modular foundations for:
 - Phase 5 SaaS UI polish with modern navigation, responsive cards, notification banners, loading states, empty states, and an upgraded dashboard/application workspace
 - AI Job Copilot with daily brief, opportunity feed, local resume/application coaching, follow-up tracker, momentum score, salary alerts, and activity timeline
 - AI Interview Coach with deterministic question generation, STAR coaching, answer scoring, mock interview sessions, readiness scoring, cheat sheets, follow-up templates, and exports
+- Authentication and multi-user account foundation with registration, login, logout, first-run admin setup, bcrypt password hashing, hashed session/reset tokens, CSRF protection, profile preferences, explicit legacy-data claiming, and route/object ownership checks
 
 ## Fresh Job Finder
 

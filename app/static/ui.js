@@ -1,6 +1,17 @@
 document.addEventListener("submit", (event) => {
   const form = event.target;
   if (!(form instanceof HTMLFormElement)) return;
+  const csrf = document.cookie
+    .split("; ")
+    .find((part) => part.startsWith("rf_csrf="))
+    ?.split("=")[1];
+  if (csrf && form.method.toLowerCase() === "post" && !form.querySelector("input[name='_csrf']")) {
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = "_csrf";
+    input.value = decodeURIComponent(csrf);
+    form.appendChild(input);
+  }
   const button = form.querySelector("button[type='submit']");
   if (!button || button.dataset.noLoading === "true") return;
   button.disabled = true;
