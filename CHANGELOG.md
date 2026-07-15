@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.13.0-dev - Unreleased
+
+- Added Phase 4 AI Application Package Builder for selected fresh jobs.
+- Added editable review-only package sections for tailored resume, cover letter, ATS keywords, missing skills, resume improvements, interview prep, recruiter email, and LinkedIn message.
+- Added transparent match analysis with missing keywords, strong matching skills, weak areas, certifications, experience alignment, and education alignment.
+- Added package exports for resume DOCX, cover letter DOCX, recruiter email TXT, LinkedIn message TXT, interview questions DOCX, and ZIP package.
+- Added additive package version, note, and export tracking tables.
+- Extended Career Dashboard with prepared applications, ready-to-send packages, average match score, recent packages, top improving resume, and export statistics.
+
 ## 0.12.0-dev - Unreleased
 
 - Added Phase 3 AI Career Dashboard with SaaS-style homepage widgets and quick actions.

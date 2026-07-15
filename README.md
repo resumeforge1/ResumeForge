@@ -2,7 +2,7 @@
 
 ResumeForge is a full-stack resume workflow app for generating client resume packages from intake data and preparing user-reviewed job applications.
 
-Current version: **0.12.0-dev**
+Current version: **0.13.0-dev**
 
 It creates:
 
@@ -113,6 +113,7 @@ ResumeForge now includes modular foundations for:
 - Provider abstraction for OpenAI, Anthropic, Gemini, Ollama, and mock provider
 - Fresh Job Finder with deterministic mock provider, optional official API provider settings, manual imports, freshness filters, transparent match scoring, alerts, schedule settings, and review-only application drafts
 - Career Dashboard with resume readiness scoring, job summaries, application pipeline, interview prep, listing-based salary insights, and local analytics
+- AI Application Package Builder with review-only tailored resume drafts, cover letters, recruiter email, LinkedIn message, interview summary, ATS checklist, and package exports
 
 ## Fresh Job Finder
 
@@ -139,6 +140,10 @@ Related pages:
 - `/applications` for pipeline review and manual application entry
 - `/interview-prep` for deterministic interview preparation prompts
 - `/fresh-jobs/providers` for provider settings, schedule settings, and alerts
+
+## Application Package Builder
+
+The package workflow at `/application-package/{client_id}/{job_id}` creates editable, review-only drafts for a selected job. It uses the existing provider abstraction and defaults to deterministic mock output. ResumeForge does not submit applications and does not invent employers, dates, job titles, certifications, licenses, numbers, salaries, or candidate experience.
 
 ## Exports
 

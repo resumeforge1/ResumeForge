@@ -334,6 +334,44 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS application_package_versions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id INTEGER NOT NULL,
+                discovered_job_id INTEGER NOT NULL,
+                package_json TEXT NOT NULL,
+                status TEXT DEFAULT 'draft',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(client_id) REFERENCES clients(id),
+                FOREIGN KEY(discovered_job_id) REFERENCES discovered_jobs(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS application_package_notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                package_version_id INTEGER NOT NULL,
+                note TEXT DEFAULT '',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(package_version_id) REFERENCES application_package_versions(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS application_package_exports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                package_version_id INTEGER NOT NULL,
+                export_type TEXT NOT NULL,
+                filename TEXT NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(package_version_id) REFERENCES application_package_versions(id)
+            )
+            """
+        )
         conn.commit()
 
 

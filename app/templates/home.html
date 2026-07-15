@@ -41,6 +41,11 @@
     <strong>{{ career.alerts|length }}</strong>
     <small>{{ career.providers.enabled_ready }} enabled providers ready</small>
   </article>
+  <article class="metric-card">
+    <span>Prepared Apps</span>
+    <strong>{{ career.packages.prepared_applications }}</strong>
+    <small>{{ career.packages.applications_ready_to_send }} ready to send</small>
+  </article>
 </section>
 
 <section class="grid two">
@@ -139,7 +144,7 @@
       <p><strong>Matched:</strong> {{ job.matched_skills|join(", ") or "Unavailable" }}</p>
       <p><strong>Missing:</strong> {{ job.missing_qualifications|join(", ") or "Unavailable" }}</p>
       {% if job.score_change_reason %}<p class="muted">{{ job.score_change_reason }}</p>{% endif %}
-      <a href="/fresh-jobs/{{ job.id }}/package?client_id={{ career.client.id if career.client else 0 }}">Application package</a>
+      {% if career.client %}<a href="/application-package/{{ career.client.id }}/{{ job.id }}">Application package</a>{% endif %}
     </article>
     {% else %}
     <p class="empty">No scored jobs yet. <a href="/fresh-jobs">Check for fresh jobs</a>.</p>
@@ -159,6 +164,28 @@
     <p class="muted">{{ career.salary.count }} listings with salary data. Calculations are listing-based, not market-wide salary research.</p>
     {% else %}
     <p class="empty">{{ career.salary.message }} <a href="/fresh-jobs">Find jobs</a>.</p>
+    {% endif %}
+  </article>
+</section>
+
+<section class="grid two">
+  <article class="panel">
+    <p class="eyebrow">Application Packages</p>
+    <h2>Recent packages</h2>
+    {% for item in career.packages.recent %}
+    <p class="note">{{ item.title }} at {{ item.company }} <span>{{ item.full_name }} | {{ item.status }}</span></p>
+    {% else %}
+    <p class="empty">No prepared applications yet. <a href="/fresh-jobs">Prepare one from a saved job</a>.</p>
+    {% endfor %}
+  </article>
+  <article class="panel">
+    <p class="eyebrow">Export Statistics</p>
+    <h2>{{ career.packages.export_statistics.total }} package exports</h2>
+    <p>Average match score: {{ career.packages.average_match_score }}</p>
+    {% if career.packages.top_improving_resume %}
+    <p>Top improving resume: {{ career.packages.top_improving_resume.full_name }} for {{ career.packages.top_improving_resume.title }} ({{ career.packages.top_improving_resume.score }})</p>
+    {% else %}
+    <p class="empty">No scored package activity yet.</p>
     {% endif %}
   </article>
 </section>

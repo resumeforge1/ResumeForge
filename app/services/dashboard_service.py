@@ -9,6 +9,7 @@ from typing import Any
 from app.database import get_connection
 from app.document_generator import OUTPUT_DIR
 from app.repositories.fresh_jobs_repository import JOB_STATUSES
+from app.repositories.application_package_repository import ApplicationPackageRepository
 from app.services.fresh_jobs import parse_salary_range
 
 
@@ -69,6 +70,9 @@ def dashboard_stats() -> dict[str, Any]:
 
 
 def career_dashboard(client: dict[str, Any] | None = None) -> dict[str, Any]:
+    package_repo = ApplicationPackageRepository()
+    package_counts = package_repo.dashboard_counts()
+    export_stats = package_repo.export_stats()
     return {
         "client": client,
         "welcome_name": (client or {}).get("full_name") or "ResumeForge user",
@@ -80,6 +84,13 @@ def career_dashboard(client: dict[str, Any] | None = None) -> dict[str, Any]:
         "providers": provider_health_summary(),
         "alerts": unread_alerts((client or {}).get("id")),
         "recent_matches": recent_match_cards((client or {}).get("id")),
+        "packages": {
+            **package_counts,
+            "recent": package_repo.recent_packages(),
+            "export_statistics": export_stats,
+            "top_improving_resume": top_improving_resume((client or {}).get("id")),
+            "average_match_score": average_match_score((client or {}).get("id")),
+        },
     }
 
 
@@ -369,6 +380,32 @@ def career_analytics(client_id: int | None = None) -> dict[str, Any]:
         "offer_conversion_rate": round((offers / applications_total) * 100) if applications_total else 0,
         "has_data": bool(jobs_by_source or matches or app_statuses),
     }
+
+
+def average_match_score(client_id: int | None = None) -> int:
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT AVG(score) AS average_score FROM job_matches WHERE (? IS NULL OR client_id = ?)",
+            (client_id, client_id),
+        ).fetchone()
+    return round(row["average_score"] or 0)
+
+
+def top_improving_resume(client_id: int | None = None) -> dict[str, Any] | None:
+    with get_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT c.full_name, dj.title, dj.company, jm.score
+            FROM job_matches jm
+            JOIN clients c ON c.id = jm.client_id
+            JOIN discovered_jobs dj ON dj.id = jm.discovered_job_id
+            WHERE (? IS NULL OR jm.client_id = ?)
+            ORDER BY jm.score DESC, jm.created_at DESC
+            LIMIT 1
+            """,
+            (client_id, client_id),
+        ).fetchone()
+    return dict(row) if row else None
 
 
 def provider_health_summary() -> dict[str, Any]:

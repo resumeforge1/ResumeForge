@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Application Package - ResumeForge{% endblock %}
+{% block content %}
+<section class="hero panel">
+  <div>
+    <p class="eyebrow">Review Required</p>
+    <h1>{{ job.title }}</h1>
+    <p class="lede">{{ job.company }} | {{ job.location }} | Review-only drafts for {{ client.full_name }}</p>
+  </div>
+  <div class="actions">
+    <form method="post" action="/application-package/{{ client.id }}/{{ job.id }}/generate">
+      <button class="button primary" type="submit">Regenerate Package</button>
+    </form>
+    <a class="button secondary" href="/fresh-jobs?client_id={{ client.id }}">Back to Fresh Jobs</a>
+    {% if message %}<strong class="pill">{{ message }}</strong>{% endif %}
+  </div>
+</section>
+
+<section class="grid two">
+  <article class="panel">
+    <p class="eyebrow">Job Summary</p>
+    <h2>{{ package.job_summary.title }}</h2>
+    <p><strong>Company:</strong> {{ package.job_summary.company }}</p>
+    <p><strong>Location:</strong> {{ package.job_summary.location or "Unavailable" }}</p>
+    <p>{{ package.job_summary.description or "No job description saved." }}</p>
+  </article>
+  <article class="panel">
+    <p class="eyebrow">Match Score</p>
+    <h2>{{ package.match_analysis.match_score }} / 100</h2>
+    <p>Match percentage: {{ package.match_analysis.match_percentage }}%</p>
+    <ul class="clean-list">
+      {% for line in package.match_analysis.score_explanation %}
+      <li>{{ line }}</li>
+      {% endfor %}
+    </ul>
+  </article>
+</section>
+
+<form method="post" action="/application-package/{{ package_version.id }}/save">
+  <section class="grid two">
+    <article class="panel">
+      <p class="eyebrow">Resume Improvements</p>
+      <textarea name="resume_improvements" rows="8">{{ package.resume_improvements|join("\n") }}</textarea>
+    </article>
+    <article class="panel">
+      <p class="eyebrow">Missing Skills Analysis</p>
+      <textarea name="missing_skills_analysis" rows="8">{{ package.missing_skills_analysis|join("\n") }}</textarea>
+    </article>
+  </section>
+
+  <section class="grid two">
+    <article class="panel">
+      <p class="eyebrow">ATS Keywords</p>
+      <textarea name="ats_keywords" rows="10">{{ package.ats_keywords|join("\n") }}</textarea>
+      <h2>Strong Matching Skills</h2>
+      <div class="tag-list">
+        {% for skill in package.match_analysis.strong_matching_skills %}
+        <span>{{ skill }}</span>
+        {% else %}
+        <p class="empty">No strong matches detected yet.</p>
+        {% endfor %}
+      </div>
+    </article>
+    <article class="panel">
+      <p class="eyebrow">Alignment</p>
+      <p><strong>Certifications mentioned:</strong> {{ package.match_analysis.certifications_mentioned|join(", ") or "None detected" }}</p>
+      <p><strong>Experience:</strong> {{ package.match_analysis.experience_alignment }}</p>
+      <p><strong>Education:</strong> {{ package.match_analysis.education_alignment }}</p>
+      <ul class="clean-list">
+        {% for item in package.guardrails %}<li>{{ item }}</li>{% endfor %}
+      </ul>
+    </article>
+  </section>
+
+  <section class="panel">
+    <p class="eyebrow">Tailored Resume Draft</p>
+    <textarea name="tailored_resume_text" rows="16">{{ package.tailored_resume_text }}</textarea>
+    <p class="muted">Structured resume data is preserved for export. This text area is for review notes and wording inspection.</p>
+  </section>
+
+  <section class="panel">
+    <p class="eyebrow">Cover Letter</p>
+    <textarea name="cover_letter" rows="14">{{ package.cover_letter }}</textarea>
+  </section>
+
+  <section class="grid two">
+    <article class="panel">
+      <p class="eyebrow">Interview Questions</p>
+      <textarea name="interview_questions" rows="10">{{ package.interview_questions|join("\n") }}</textarea>
+      <h2>Interview Preparation Summary</h2>
+      <textarea name="interview_summary" rows="8">{{ package.interview_summary }}</textarea>
+    </article>
+    <article class="panel">
+      <p class="eyebrow">Messages</p>
+      <h2>Recruiter Email</h2>
+      <textarea name="recruiter_email" rows="9">{{ package.recruiter_email }}</textarea>
+      <h2>LinkedIn Message</h2>
+      <textarea name="linkedin_message" rows="7">{{ package.linkedin_message }}</textarea>
+    </article>
+  </section>
+
+  <section class="panel">
+    <p class="eyebrow">Review Notes</p>
+    <label>Status
+      <select name="status">
+        <option value="draft" {% if package_version.status == "draft" %}selected{% endif %}>Draft</option>
+        <option value="ready to send" {% if package_version.status == "ready to send" %}selected{% endif %}>Ready To Send</option>
+      </select>
+    </label>
+    <label>New note<textarea name="note" rows="4"></textarea></label>
+    <button class="button primary" type="submit">Save Editable Package</button>
+    {% for note in notes %}
+    <p class="note">{{ note.note }} <span>{{ note.created_at }}</span></p>
+    {% endfor %}
+  </section>
+</form>
+
+<section class="panel">
+  <p class="eyebrow">Export Options</p>
+  <h2>Review before sending</h2>
+  <div class="actions inline">
+    {% for export_type, label in export_types.items() %}
+    <form method="post" action="/application-package/{{ package_version.id }}/export/{{ export_type }}">
+      <button class="button secondary" type="submit">{{ label|replace("-", " ")|title }}</button>
+    </form>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

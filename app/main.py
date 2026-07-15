@@ -16,6 +16,7 @@ from app.core.version import get_version
 from app.database import DB_PATH, get_connection, init_db, list_clients, save_client
 from app.document_generator import OUTPUT_DIR, generate_output, generate_outputs, render_resume_html
 from app.repositories.application_repository import ApplicationRepository
+from app.repositories.application_package_repository import ApplicationPackageRepository
 from app.repositories.client_repository import ClientRepository
 from app.repositories.fresh_jobs_repository import FreshJobsRepository
 from app.repositories.settings_repository import SettingsRepository
@@ -29,6 +30,12 @@ from app.services.dashboard_service import (
     generated_files_for_client,
     get_interview_notes,
     save_interview_notes,
+)
+from app.services.application_package_service import (
+    PACKAGE_EXPORT_TYPES,
+    build_application_package,
+    export_application_package,
+    package_from_form,
 )
 from app.services.fresh_jobs import (
     MockJobProvider,
@@ -62,6 +69,7 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), na
 app.mount("/outputs", StaticFiles(directory=str(OUTPUT_DIR)), name="outputs")
 client_repo = ClientRepository()
 application_repo = ApplicationRepository()
+package_repo = ApplicationPackageRepository()
 fresh_jobs_repo = FreshJobsRepository()
 settings_repo = SettingsRepository()
 job_provider = MockJobProvider()
@@ -388,7 +396,10 @@ async def prepare_fresh_job_application(job_id: int, request: Request) -> Redire
     package = prepare_application_package(client, job, match)
     fresh_jobs_repo.create_application_package(client_id, job_id, package)
     fresh_jobs_repo.set_job_status(client_id, job_id, "preparing")
-    return RedirectResponse(url=f"/fresh-jobs/{job_id}/package?client_id={client_id}", status_code=303)
+    existing = package_repo.latest_for_job(client_id, job_id)
+    if existing is None:
+        package_repo.create_version(client_id, job_id, build_application_package(client, job, match), "draft")
+    return RedirectResponse(url=f"/application-package/{client_id}/{job_id}", status_code=303)
 
 
 @app.get("/fresh-jobs/{job_id}/package", response_class=HTMLResponse)
@@ -408,6 +419,75 @@ def fresh_job_package_page(request: Request, job_id: int, client_id: int) -> HTM
             "status": fresh_jobs_repo.get_saved_status(client_id, job_id),
         },
     )
+
+
+@app.get("/application-package/{client_id}/{job_id}", response_class=HTMLResponse)
+def application_package_page(request: Request, client_id: int, job_id: int) -> HTMLResponse:
+    client = require_client(client_id)
+    job = fresh_jobs_repo.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    package_version = package_repo.latest_for_job(client_id, job_id)
+    if package_version is None:
+        package_id = package_repo.create_version(client_id, job_id, build_application_package(client, job, match_for_job(client_id, job_id)))
+        package_version = package_repo.get_version(package_id)
+    return templates.TemplateResponse(
+        "application_package.html",
+        {
+            "request": request,
+            "client": client,
+            "job": job,
+            "package_version": package_version,
+            "package": package_version["package"] if package_version else {},
+            "notes": package_repo.notes(int(package_version["id"])) if package_version else [],
+            "export_types": PACKAGE_EXPORT_TYPES,
+            "message": request.query_params.get("message", ""),
+        },
+    )
+
+
+@app.post("/application-package/{client_id}/{job_id}/generate")
+def generate_application_package_route(client_id: int, job_id: int) -> RedirectResponse:
+    client = require_client(client_id)
+    job = fresh_jobs_repo.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    package_repo.create_version(client_id, job_id, build_application_package(client, job, match_for_job(client_id, job_id)))
+    fresh_jobs_repo.set_job_status(client_id, job_id, "preparing")
+    return RedirectResponse(url=f"/application-package/{client_id}/{job_id}?message=Package generated", status_code=303)
+
+
+@app.post("/application-package/{package_id}/save")
+async def save_application_package_route(package_id: int, request: Request) -> RedirectResponse:
+    package_version = package_repo.get_version(package_id)
+    if package_version is None:
+        raise HTTPException(status_code=404, detail="Package not found.")
+    form = await request.form()
+    updated = package_from_form(form, package_version["package"])
+    status = str(form.get("status", "draft")).strip() or "draft"
+    if status not in {"draft", "ready to send"}:
+        raise HTTPException(status_code=400, detail="Invalid package status.")
+    package_repo.save_version(package_id, updated, status)
+    package_repo.add_note(package_id, str(form.get("note", "")))
+    if status == "ready to send":
+        fresh_jobs_repo.set_job_status(int(package_version["client_id"]), int(package_version["discovered_job_id"]), "ready to apply")
+    return RedirectResponse(
+        url=f"/application-package/{package_version['client_id']}/{package_version['discovered_job_id']}?message=Package saved",
+        status_code=303,
+    )
+
+
+@app.post("/application-package/{package_id}/export/{export_type}")
+def export_application_package_route(package_id: int, export_type: str) -> FileResponse:
+    package_version = package_repo.get_version(package_id)
+    if package_version is None:
+        raise HTTPException(status_code=404, detail="Package not found.")
+    try:
+        filename = export_application_package(package_version, export_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    package_repo.record_export(package_id, export_type, filename)
+    return download_file(filename)
 
 
 @app.get("/applications", response_class=HTMLResponse)

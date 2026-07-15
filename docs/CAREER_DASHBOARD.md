@@ -13,6 +13,8 @@ ResumeForge `0.12.0-dev` adds a Career Dashboard at `/`.
 - Listing-based salary insights
 - Local career analytics
 - Provider health summary
+- Prepared application packages
+- Package export statistics
 
 ## Resume Readiness Methodology
 
