@@ -26,6 +26,15 @@ a {
   text-decoration: none;
 }
 
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 3px solid #6bb6ff;
+  outline-offset: 2px;
+}
+
 .app-shell {
   display: grid;
   grid-template-columns: 250px minmax(0, 1fr);
@@ -87,6 +96,10 @@ a {
   border: 1px solid var(--line);
   margin-bottom: 22px;
   padding: 22px;
+}
+
+.career-hero {
+  background: linear-gradient(135deg, #ffffff 0%, #eef6fc 100%);
 }
 
 .eyebrow {
@@ -544,6 +557,102 @@ select {
   padding: 10px 12px;
 }
 
+.metric-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-bottom: 22px;
+}
+
+.metric-card {
+  background: var(--white);
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+  min-height: 130px;
+  padding: 18px;
+}
+
+.metric-card span,
+.metric-card small,
+.muted {
+  color: var(--muted);
+}
+
+.metric-card strong {
+  color: var(--blue-dark);
+  font-size: 36px;
+}
+
+.score-bar.large {
+  height: 13px;
+}
+
+.clean-list {
+  line-height: 1.55;
+  margin: 14px 0 0;
+  padding-left: 20px;
+}
+
+.pipeline-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.pipeline-column {
+  background: #f5f8fb;
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  min-height: 150px;
+  padding: 14px;
+}
+
+.pipeline-column > span {
+  color: var(--blue-dark);
+  font-size: 26px;
+  font-weight: 900;
+}
+
+.pipeline-item {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+}
+
+.match-card {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+  padding: 16px 0;
+}
+
+.score-badge.small {
+  font-size: 16px;
+  height: 44px;
+  min-width: 44px;
+}
+
+.chart-bars {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.chart-bars div {
+  display: grid;
+  gap: 5px;
+}
+
+.chart-bars strong {
+  background: var(--blue);
+  color: var(--white);
+  min-width: 34px;
+  padding: 6px 8px;
+}
+
 .grid.compact {
   gap: 8px;
 }
@@ -589,6 +698,8 @@ select {
   }
 
   .grid.two,
+  .metric-grid,
+  .pipeline-grid,
   .intake-layout,
   .preview-layout,
   .download-grid {

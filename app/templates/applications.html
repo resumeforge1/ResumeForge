@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Applications - ResumeForge{% endblock %}
+{% block content %}
+<section class="hero panel">
+  <div>
+    <p class="eyebrow">Applications</p>
+    <h1>Application pipeline</h1>
+    <p class="lede">Move saved jobs and manually tracked applications through safe, explicit status updates.</p>
+  </div>
+  <div class="actions">
+    <a class="button primary" href="/fresh-jobs">Fresh Jobs</a>
+    <a class="button secondary" href="/interview-prep">Interview Prep</a>
+  </div>
+</section>
+
+{% if not client %}
+<section class="panel">
+  <h2>No resume yet</h2>
+  <p>Create or import a resume before tracking applications.</p>
+  <a class="button primary" href="/clients/new">Create Resume</a>
+</section>
+{% else %}
+<section class="panel">
+  <div class="section-heading">
+    <div>
+      <p class="eyebrow">{{ client.full_name }}</p>
+      <h2>Pipeline stages</h2>
+    </div>
+  </div>
+  <div class="pipeline-grid">
+    {% for status, column in pipeline.items() %}
+    <article class="pipeline-column">
+      <strong>{{ status|title }}</strong>
+      <span>{{ column.count }}</span>
+      {% for item in column["items"] %}
+      <div class="pipeline-item">
+        <p>{{ item.company or "Company unavailable" }}<br><small>{{ item.title or item.position or "Role unavailable" }}</small></p>
+        {% if item.discovered_job_id %}
+        <form method="post" action="/fresh-jobs/{{ item.discovered_job_id }}/status">
+          <input type="hidden" name="client_id" value="{{ client.id }}">
+          <label>Status
+            <select name="status">
+              {% for option in pipeline_statuses %}
+              <option value="{{ option }}" {% if option == status %}selected{% endif %}>{{ option|title }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <button class="button secondary" type="submit">Update</button>
+        </form>
+        {% endif %}
+      </div>
+      {% else %}
+      <p class="empty">No items in this stage.</p>
+      {% endfor %}
+    </article>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel">
+  <p class="eyebrow">Manual Application</p>
+  <h2>Add an application</h2>
+  <form method="post" action="/clients/{{ client.id }}/applications" class="grid two">
+    <label>Company<input name="company"></label>
+    <label>Position<input name="position"></label>
+    <label>Salary<input name="salary"></label>
+    <label>Date applied<input name="date_applied"></label>
+    <label>Status
+      <select name="status">
+        {% for option in ["Applied", "Interview", "Interview Scheduled", "Offer", "Rejected"] %}
+        <option value="{{ option }}">{{ option }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="wide">Notes<textarea name="notes"></textarea></label>
+    <div class="submit-bar wide"><button class="button primary" type="submit">Add Application</button></div>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

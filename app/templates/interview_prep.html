@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Interview Prep - ResumeForge{% endblock %}
+{% block content %}
+<section class="hero panel">
+  <div>
+    <p class="eyebrow">Interview Prep</p>
+    <h1>{{ prep.title }}</h1>
+    <p class="lede">Deterministic preparation prompts based on saved resume and job data. These prompts do not invent company facts or candidate experience.</p>
+  </div>
+  <div class="actions">
+    <a class="button secondary" href="/applications">Applications</a>
+    <a class="button secondary" href="/fresh-jobs">Fresh Jobs</a>
+    {% if message %}<strong class="pill">{{ message }}</strong>{% endif %}
+  </div>
+</section>
+
+{% if not client %}
+<section class="panel">
+  <h2>No resume selected</h2>
+  <p>Create or import a resume, then save or prepare a job to generate interview prompts.</p>
+  <a class="button primary" href="/clients/new">Create Resume</a>
+</section>
+{% else %}
+<section class="grid two">
+  <article class="panel">
+    <p class="eyebrow">{{ prep.company }}</p>
+    <h2>Likely questions</h2>
+    <ul class="clean-list">
+      {% for item in prep.questions %}<li>{{ item }}</li>{% endfor %}
+    </ul>
+    <h2>Talking points</h2>
+    <ul class="clean-list">
+      {% for item in prep.talking_points %}<li>{{ item }}</li>{% endfor %}
+    </ul>
+    <h2>STAR planning prompts</h2>
+    <ul class="clean-list">
+      {% for item in prep.star_prompts %}<li>{{ item }}</li>{% endfor %}
+    </ul>
+  </article>
+
+  <article class="panel">
+    <p class="eyebrow">Focus Areas</p>
+    <h2>Skills to emphasize</h2>
+    <div class="tag-list">
+      {% for skill in prep.skills_to_emphasize %}
+      <span>{{ skill }}</span>
+      {% else %}
+      <p class="empty">No matched skills yet. Add skills or analyze a job.</p>
+      {% endfor %}
+    </div>
+    <h2>Possible concern areas</h2>
+    <ul class="clean-list">
+      {% for item in prep.concern_areas %}
+      <li>{{ item }}</li>
+      {% else %}
+      <li>No major concern areas identified from available data.</li>
+      {% endfor %}
+    </ul>
+    <h2>Questions to ask</h2>
+    <ul class="clean-list">
+      {% for item in prep.candidate_questions %}<li>{{ item }}</li>{% endfor %}
+    </ul>
+  </article>
+</section>
+
+<section class="grid two">
+  <article class="panel">
+    <p class="eyebrow">Checklist</p>
+    <h2>Before the interview</h2>
+    <ul class="clean-list">
+      {% for item in prep.checklist %}<li>{{ item }}</li>{% endfor %}
+    </ul>
+  </article>
+  <form class="panel" method="post" action="/interview-prep/notes">
+    <input type="hidden" name="client_id" value="{{ client.id }}">
+    <input type="hidden" name="job_id" value="{{ job.id if job else '' }}">
+    <p class="eyebrow">Notes</p>
+    <h2>Save interview notes</h2>
+    <textarea name="notes" rows="10">{{ notes }}</textarea>
+    <button class="button primary" type="submit">Save Notes</button>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

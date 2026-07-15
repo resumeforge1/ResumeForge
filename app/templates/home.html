@@ -1,33 +1,199 @@
 {% extends "base.html" %}
-{% block title %}Dashboard - ResumeForge{% endblock %}
+{% block title %}Career Dashboard - ResumeForge{% endblock %}
 {% block content %}
-<section class="hero panel">
+<section class="hero panel career-hero">
   <div>
-    <p class="eyebrow">Client workspace</p>
-    <h1>ResumeForge CRM</h1>
-    <p class="lede">Manage clients, import resumes, analyze job descriptions, and generate complete application packages.</p>
+    <p class="eyebrow">Career Dashboard</p>
+    <h1>Welcome, {{ career.welcome_name }}</h1>
+    <p class="lede">Track resume readiness, fresh jobs, applications, interviews, salary listing data, and provider alerts from one workspace.</p>
   </div>
   <div class="actions">
-    <a class="button primary" href="/clients/new">Start Intake</a>
-    <a class="button" href="/clients/new?sample=true">Use Alfredo Sample</a>
-    <form method="post" action="/clients/sample">
-      <button type="submit" class="button ghost">Create Sample Client</button>
-    </form>
-    <form method="post" action="/seed/demo">
-      <button type="submit" class="button ghost">Seed Demo Data</button>
-    </form>
+    <a class="button primary" href="/clients/new">Create Resume</a>
+    <a class="button" href="#import-resume">Import Resume</a>
+    {% if career.client %}<a class="button" href="/fresh-jobs?client_id={{ career.client.id }}">Check Fresh Jobs</a>{% endif %}
+    <a class="button ghost" href="/interview-prep">Interview Prep</a>
   </div>
 </section>
 
-<section class="workspace">
+<section class="metric-grid">
+  <article class="metric-card">
+    <span>Readiness</span>
+    <strong>{{ career.resume_score.score }}</strong>
+    <small>{{ career.resume_score.label }}</small>
+  </article>
+  <article class="metric-card">
+    <span>Fresh Jobs</span>
+    <strong>{{ career.jobs.discovered }}</strong>
+    <small>{{ career.jobs.new_jobs }} new since discovery</small>
+  </article>
+  <article class="metric-card">
+    <span>Saved Jobs</span>
+    <strong>{{ career.jobs.saved }}</strong>
+    <small>{{ career.jobs.high_matches }} high-match jobs</small>
+  </article>
+  <article class="metric-card">
+    <span>Applications</span>
+    <strong>{{ stats.applications_tracked }}</strong>
+    <small>{{ stats.interviews }} interviews | {{ stats.offers }} offers</small>
+  </article>
+  <article class="metric-card">
+    <span>Unread Alerts</span>
+    <strong>{{ career.alerts|length }}</strong>
+    <small>{{ career.providers.enabled_ready }} enabled providers ready</small>
+  </article>
+</section>
+
+<section class="grid two">
+  <article class="panel">
+    <div class="section-heading compact">
+      <div>
+        <p class="eyebrow">Resume Score</p>
+        <h2>Internal readiness breakdown</h2>
+      </div>
+      {% if career.client %}<a class="button secondary" href="/clients/{{ career.client.id }}/preview">Preview</a>{% endif %}
+    </div>
+    <div class="score-bar large"><span style="width: {{ career.resume_score.score }}%"></span></div>
+    <div class="grid two compact">
+      {% for label, value in career.resume_score.breakdown.items() %}
+      <div class="mini-metric"><span>{{ label|replace("_", " ")|title }}</span><strong>{{ value }}</strong></div>
+      {% else %}
+      <p class="empty">No resume yet. <a href="/clients/new">Create one</a>.</p>
+      {% endfor %}
+    </div>
+    <ul class="clean-list">
+      {% for item in career.resume_score.improvements %}
+      <li>{{ item }}</li>
+      {% endfor %}
+    </ul>
+  </article>
+
+  <article class="panel">
+    <div class="section-heading compact">
+      <div>
+        <p class="eyebrow">Jobs Found</p>
+        <h2>Fresh-job summary</h2>
+      </div>
+      <a class="button secondary" href="/fresh-jobs">All Jobs</a>
+    </div>
+    <div class="grid two compact">
+      <div class="mini-metric"><span>New</span><strong>{{ career.jobs.new_jobs }}</strong></div>
+      <div class="mini-metric"><span>Dismissed</span><strong>{{ career.jobs.dismissed }}</strong></div>
+      <div class="mini-metric"><span>Average Match</span><strong>{{ career.jobs.average_match_score }}</strong></div>
+      <div class="mini-metric"><span>Provider Errors</span><strong>{{ career.jobs.provider_errors }}</strong></div>
+    </div>
+    <p class="muted">Last check: {{ career.jobs.last_provider_check or "Not checked yet" }}</p>
+    <p class="muted">Next scheduled check: {{ career.jobs.next_scheduled_check or "Not scheduled" }}</p>
+    <div class="actions inline">
+      <a class="button secondary" href="/fresh-jobs?new_only=true">New Jobs</a>
+      <a class="button secondary" href="/fresh-jobs?sort=best_match">Highest Match</a>
+      <a class="button secondary" href="/fresh-jobs/providers">Provider Settings</a>
+    </div>
+  </article>
+</section>
+
+<section class="panel">
   <div class="section-heading">
-    <h2>AI Import</h2>
-    <span>PDF or DOCX</span>
+    <div>
+      <p class="eyebrow">Application Pipeline</p>
+      <h2>Review and move work forward</h2>
+    </div>
+    <a class="button secondary" href="/applications">Open Applications</a>
   </div>
-  <form class="inline-form" method="post" action="/clients/import" enctype="multipart/form-data">
-    <input type="file" name="resume_file" accept=".pdf,.docx" required>
-    <button class="button primary" type="submit">Import Resume</button>
-  </form>
+  <div class="pipeline-grid">
+    {% for status, column in career.pipeline.items() %}
+    <article class="pipeline-column">
+      <strong>{{ status|title }}</strong>
+      <span>{{ column.count }}</span>
+      {% for item in column["items"][:2] %}
+      <p>{{ item.company or "Company" }}<br><small>{{ item.title or item.position or "Role" }}</small></p>
+      {% else %}
+      <p class="empty">No items</p>
+      {% endfor %}
+    </article>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="grid two">
+  <article class="panel">
+    <div class="section-heading compact">
+      <div>
+        <p class="eyebrow">Match Cards</p>
+        <h2>Recent scoring detail</h2>
+      </div>
+    </div>
+    {% for job in career.recent_matches %}
+    <article class="match-card">
+      <div class="fresh-job-head">
+        <div>
+          <strong>{{ job.title }}</strong>
+          <p>{{ job.company }} | Confidence {{ job.provider_confidence or 80 }}</p>
+        </div>
+        <span class="score-badge small">{{ job.score }}</span>
+      </div>
+      <div class="grid two compact">
+        {% for label, value in job.breakdown.items() %}
+        <div class="mini-metric"><span>{{ label|replace("_", " ")|title }}</span><strong>{{ value }}</strong></div>
+        {% endfor %}
+      </div>
+      <p><strong>Matched:</strong> {{ job.matched_skills|join(", ") or "Unavailable" }}</p>
+      <p><strong>Missing:</strong> {{ job.missing_qualifications|join(", ") or "Unavailable" }}</p>
+      {% if job.score_change_reason %}<p class="muted">{{ job.score_change_reason }}</p>{% endif %}
+      <a href="/fresh-jobs/{{ job.id }}/package?client_id={{ career.client.id if career.client else 0 }}">Application package</a>
+    </article>
+    {% else %}
+    <p class="empty">No scored jobs yet. <a href="/fresh-jobs">Check for fresh jobs</a>.</p>
+    {% endfor %}
+  </article>
+
+  <article class="panel">
+    <p class="eyebrow">Salary Insights</p>
+    <h2>Listing-based salary data</h2>
+    {% if career.salary.available %}
+    <div class="grid two compact">
+      <div class="mini-metric"><span>Minimum</span><strong>${{ "{:,}".format(career.salary.minimum) }}</strong></div>
+      <div class="mini-metric"><span>Maximum</span><strong>${{ "{:,}".format(career.salary.maximum) }}</strong></div>
+      <div class="mini-metric"><span>Midpoint</span><strong>${{ "{:,}".format(career.salary.midpoint) }}</strong></div>
+      <div class="mini-metric"><span>Average</span><strong>${{ "{:,}".format(career.salary.average) }}</strong></div>
+    </div>
+    <p class="muted">{{ career.salary.count }} listings with salary data. Calculations are listing-based, not market-wide salary research.</p>
+    {% else %}
+    <p class="empty">{{ career.salary.message }} <a href="/fresh-jobs">Find jobs</a>.</p>
+    {% endif %}
+  </article>
+</section>
+
+<section class="grid two">
+  <article class="panel">
+    <p class="eyebrow">Career Analytics</p>
+    <h2>Local activity charts</h2>
+    {% if career.analytics.has_data %}
+    <div class="chart-bars" aria-label="Fresh jobs by source">
+      {% for item in career.analytics.jobs_by_source %}
+      <div><span>{{ item.label }}</span><strong style="width: {{ [item.value * 18, 100]|min }}%">{{ item.value }}</strong></div>
+      {% endfor %}
+    </div>
+    <p class="muted">Interview conversion: {{ career.analytics.interview_conversion_rate }}% | Offer conversion: {{ career.analytics.offer_conversion_rate }}%</p>
+    {% else %}
+    <p class="empty">No analytics history yet. Activity appears after jobs or applications are added.</p>
+    {% endif %}
+  </article>
+
+  <article class="panel" id="import-resume">
+    <p class="eyebrow">Quick Actions</p>
+    <h2>Start the next step</h2>
+    <form class="inline-form" method="post" action="/clients/import" enctype="multipart/form-data">
+      <input type="file" name="resume_file" accept=".pdf,.docx" required aria-label="Resume file">
+      <button class="button primary" type="submit">Import Resume</button>
+    </form>
+    <div class="actions inline">
+      <a class="button secondary" href="/clients/new?sample=true">Use Alfredo Sample</a>
+      <form method="post" action="/clients/sample"><button type="submit" class="button ghost">Create Sample Client</button></form>
+      <form method="post" action="/seed/demo"><button type="submit" class="button ghost">Seed Demo Data</button></form>
+      <a class="button secondary" href="/applications">Add Application Manually</a>
+      <a class="button secondary" href="/fresh-jobs/providers">Review Alerts</a>
+    </div>
+  </article>
 </section>
 
 <section class="workspace">
@@ -50,12 +216,13 @@
           <div class="row-actions">
             <a href="/clients/{{ client.id }}">CRM</a>
             <a href="/clients/{{ client.id }}/preview">Preview</a>
+            <a href="/fresh-jobs?client_id={{ client.id }}">Fresh Jobs</a>
           </div>
         </article>
       {% endfor %}
     </div>
   {% else %}
-    <p class="empty">No active clients found.</p>
+    <p class="empty">No resume yet. <a href="/clients/new">Create your first resume</a>.</p>
   {% endif %}
 </section>
 {% endblock %}

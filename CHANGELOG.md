@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.12.0-dev - Unreleased
+
+- Added Phase 3 AI Career Dashboard with SaaS-style homepage widgets and quick actions.
+- Added internal resume readiness scoring with transparent component breakdown and improvement prompts.
+- Added fresh-job summary, provider health, unread alerts, salary listing insights, and local analytics widgets.
+- Added application pipeline page with safe status controls for saved jobs and manual application entry.
+- Added deterministic Interview Prep page with questions, STAR prompts, focus areas, checklists, and saved notes.
+- Added additive `interview_prep_notes` table for interview preparation notes.
+- Added documentation for Career Dashboard, Interview Prep, and Career Analytics.
+
 ## 0.11.0-dev - Unreleased
 
 - Added Phase 2 Fresh Job Finder provider settings with deterministic mock provider retained as the default.

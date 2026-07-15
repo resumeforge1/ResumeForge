@@ -5,7 +5,19 @@ from tests.conftest import create_client
 def test_main_pages_return_http_200(qa_app):
     client, _, _, _ = qa_app
     client_id = create_client(client)
-    for path in ["/", "/dashboard", "/health", "/clients/new", f"/clients/{client_id}/preview", f"/clients/{client_id}", "/marketplace", "/settings"]:
+    for path in [
+        "/",
+        "/dashboard",
+        "/health",
+        "/clients/new",
+        f"/clients/{client_id}/preview",
+        f"/clients/{client_id}",
+        "/fresh-jobs",
+        "/applications",
+        "/interview-prep",
+        "/marketplace",
+        "/settings",
+    ]:
         response = client.get(path)
         assert response.status_code == 200, path
 
@@ -16,7 +28,7 @@ def test_health_check_reports_release_status(qa_app):
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ok"
-    assert data["version"] == "0.11.0-dev"
+    assert data["version"] == "0.12.0-dev"
     assert data["database"]["ok"] is True
     assert data["templates"]["count"] >= 8
 

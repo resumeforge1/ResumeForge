@@ -5,6 +5,20 @@ from typing import Any
 from app.database import get_connection
 
 
+APPLICATION_STATUSES = {
+    "Discovered",
+    "Saved",
+    "Preparing",
+    "Ready to Apply",
+    "Applied",
+    "Interview",
+    "Interview Scheduled",
+    "Offer",
+    "Rejected",
+    "Dismissed",
+}
+
+
 class ApplicationRepository:
     def list_for_client(self, client_id: int) -> list[dict[str, Any]]:
         with get_connection() as conn:
@@ -17,6 +31,7 @@ class ApplicationRepository:
             ]
 
     def create(self, client_id: int, data: dict[str, str]) -> None:
+        status = validate_status(data.get("status", "Applied"))
         with get_connection() as conn:
             conn.execute(
                 """
@@ -29,7 +44,7 @@ class ApplicationRepository:
                     data.get("company", ""),
                     data.get("position", ""),
                     data.get("salary", ""),
-                    data.get("status", "Applied"),
+                    status,
                     data.get("date_applied", ""),
                     data.get("notes", ""),
                 ),
@@ -37,6 +52,7 @@ class ApplicationRepository:
             conn.commit()
 
     def update(self, application_id: int, data: dict[str, str]) -> None:
+        status = validate_status(data.get("status", "Applied"))
         with get_connection() as conn:
             conn.execute(
                 """
@@ -54,7 +70,7 @@ class ApplicationRepository:
                     data.get("company", ""),
                     data.get("position", ""),
                     data.get("salary", ""),
-                    data.get("status", "Applied"),
+                    status,
                     data.get("date_applied", ""),
                     data.get("notes", ""),
                     application_id,
@@ -66,3 +82,10 @@ class ApplicationRepository:
         with get_connection() as conn:
             conn.execute("DELETE FROM application_tracker WHERE id = ?", (application_id,))
             conn.commit()
+
+
+def validate_status(status: str) -> str:
+    clean = str(status or "Applied").strip()
+    if clean not in APPLICATION_STATUSES:
+        raise ValueError("Invalid application status")
+    return clean

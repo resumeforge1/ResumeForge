@@ -20,7 +20,16 @@ from app.repositories.client_repository import ClientRepository
 from app.repositories.fresh_jobs_repository import FreshJobsRepository
 from app.repositories.settings_repository import SettingsRepository
 from app.sample_data import SAMPLE_ALFREDO_CRUZ_CDL
-from app.services.dashboard_service import client_timeline, dashboard_stats, generated_files_for_client
+from app.services.dashboard_service import (
+    PIPELINE_STATUSES,
+    career_dashboard,
+    client_timeline,
+    dashboard_stats,
+    generate_interview_prep,
+    generated_files_for_client,
+    get_interview_notes,
+    save_interview_notes,
+)
 from app.services.fresh_jobs import (
     MockJobProvider,
     ProviderFailure,
@@ -99,16 +108,20 @@ def health() -> dict[str, Any]:
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request) -> HTMLResponse:
     query = request.query_params.get("q", "")
+    clients = client_repo.search(query)
+    selected_client = client_repo.get(int(clients[0]["id"])) if clients else None
     return templates.TemplateResponse(
         "home.html",
         {
             "request": request,
-            "clients": client_repo.search(query),
+            "clients": clients,
             "query": query,
             "sample": SAMPLE_ALFREDO_CRUZ_CDL,
             "industry_templates": list_template_configs(),
             "settings": settings_repo.get(),
             "stats": dashboard_stats(),
+            "career": career_dashboard(selected_client),
+            "pipeline_statuses": PIPELINE_STATUSES,
         },
     )
 
@@ -397,6 +410,65 @@ def fresh_job_package_page(request: Request, job_id: int, client_id: int) -> HTM
     )
 
 
+@app.get("/applications", response_class=HTMLResponse)
+def applications_page(request: Request, client_id: int | None = None) -> HTMLResponse:
+    client = client_repo.get(client_id) if client_id else first_available_client()
+    dashboard = career_dashboard(client)
+    return templates.TemplateResponse(
+        "applications.html",
+        {
+            "request": request,
+            "client": client,
+            "clients": client_repo.search("", include_archived=True),
+            "pipeline": dashboard["pipeline"],
+            "pipeline_statuses": PIPELINE_STATUSES,
+        },
+    )
+
+
+@app.get("/interview-prep", response_class=HTMLResponse)
+def interview_prep_page(request: Request, client_id: int | None = None, job_id: int | None = None) -> HTMLResponse:
+    client = client_repo.get(client_id) if client_id else first_available_client()
+    if client is None:
+        prep = generate_interview_prep({}, None)
+        notes = ""
+        job = None
+        match = None
+    else:
+        job = fresh_jobs_repo.get_job(job_id) if job_id else first_preppable_job(int(client["id"]))
+        job_id = int(job["id"]) if job else None
+        match = match_for_job(int(client["id"]), job_id) if job_id else None
+        prep = generate_interview_prep(client, job, match)
+        notes = get_interview_notes(int(client["id"]), job_id)
+    return templates.TemplateResponse(
+        "interview_prep.html",
+        {
+            "request": request,
+            "client": client,
+            "clients": client_repo.search("", include_archived=True),
+            "job": job,
+            "match": match,
+            "prep": prep,
+            "notes": notes,
+            "message": request.query_params.get("message", ""),
+        },
+    )
+
+
+@app.post("/interview-prep/notes")
+async def save_interview_prep_notes(request: Request) -> RedirectResponse:
+    form = await request.form()
+    client_id = int(form.get("client_id", 0))
+    require_client(client_id)
+    raw_job_id = str(form.get("job_id", "")).strip()
+    job_id = int(raw_job_id) if raw_job_id else None
+    save_interview_notes(client_id, job_id, str(form.get("notes", "")))
+    target = f"/interview-prep?client_id={client_id}"
+    if job_id:
+        target += f"&job_id={job_id}"
+    return RedirectResponse(url=f"{target}&message=Notes saved", status_code=303)
+
+
 @app.get("/clients/{client_id}", response_class=HTMLResponse)
 def client_detail(request: Request, client_id: int) -> HTMLResponse:
     client = require_client(client_id)
@@ -425,14 +497,20 @@ async def add_client_note(client_id: int, request: Request) -> RedirectResponse:
 @app.post("/clients/{client_id}/applications")
 async def add_application(client_id: int, request: Request) -> RedirectResponse:
     form = await request.form()
-    application_repo.create(client_id, {key: str(value) for key, value in form.items()})
+    try:
+        application_repo.create(client_id, {key: str(value) for key, value in form.items()})
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return RedirectResponse(url=f"/clients/{client_id}", status_code=303)
 
 
 @app.post("/clients/{client_id}/applications/{application_id}/edit")
 async def edit_application(client_id: int, application_id: int, request: Request) -> RedirectResponse:
     form = await request.form()
-    application_repo.update(application_id, {key: str(value) for key, value in form.items()})
+    try:
+        application_repo.update(application_id, {key: str(value) for key, value in form.items()})
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return RedirectResponse(url=f"/clients/{client_id}", status_code=303)
 
 
@@ -647,6 +725,35 @@ def enabled_job_providers() -> list[Any]:
         if row and int(row.get("enabled") or 0) == 1:
             enabled.append(provider)
     return enabled
+
+
+def first_preppable_job(client_id: int) -> dict[str, Any] | None:
+    jobs = fresh_jobs_repo.list_matches(client_id, sort="best_match")
+    if jobs:
+        return fresh_jobs_repo.get_job(int(jobs[0]["id"]))
+    return None
+
+
+def match_for_job(client_id: int, job_id: int) -> dict[str, Any] | None:
+    with get_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT score, breakdown, matched_skills, missing_qualifications
+            FROM job_matches
+            WHERE client_id = ? AND discovered_job_id = ?
+            ORDER BY id DESC LIMIT 1
+            """,
+            (client_id, job_id),
+        ).fetchone()
+    if row is None:
+        return None
+    data = dict(row)
+    for field, fallback in (("breakdown", {}), ("matched_skills", []), ("missing_qualifications", [])):
+        try:
+            data[field] = json.loads(data.get(field) or "")
+        except json.JSONDecodeError:
+            data[field] = fallback
+    return data
 
 
 def first_available_client() -> dict[str, Any] | None:

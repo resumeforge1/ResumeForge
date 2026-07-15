@@ -319,6 +319,21 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS interview_prep_notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id INTEGER NOT NULL,
+                discovered_job_id INTEGER,
+                notes TEXT DEFAULT '',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(client_id, discovered_job_id),
+                FOREIGN KEY(client_id) REFERENCES clients(id),
+                FOREIGN KEY(discovered_job_id) REFERENCES discovered_jobs(id)
+            )
+            """
+        )
         conn.commit()
 
 

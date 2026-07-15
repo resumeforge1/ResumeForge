@@ -1,6 +1,6 @@
 # Fresh Job Finder
 
-ResumeForge `0.11.0-dev` includes Fresh Job Finder Phase 1 and Phase 2: a user-controlled job discovery workspace with deterministic testing, optional permitted providers, manual imports, alerts, and scheduled-check settings.
+ResumeForge `0.12.0-dev` includes Fresh Job Finder Phase 1 and Phase 2 plus Career Dashboard integrations: a user-controlled job discovery workspace with deterministic testing, optional permitted providers, manual imports, alerts, scheduled-check settings, dashboard summaries, and interview-prep handoff.
 
 ## Included
 
