@@ -372,6 +372,51 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS interview_coach_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id INTEGER,
+                discovered_job_id INTEGER,
+                mode TEXT DEFAULT 'General Interview',
+                questions_json TEXT NOT NULL,
+                current_index INTEGER DEFAULT 0,
+                completed INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(client_id) REFERENCES clients(id),
+                FOREIGN KEY(discovered_job_id) REFERENCES discovered_jobs(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS interview_coach_answers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id INTEGER NOT NULL,
+                question_index INTEGER NOT NULL,
+                answer TEXT DEFAULT '',
+                review_json TEXT DEFAULT '{}',
+                completed INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(session_id, question_index),
+                FOREIGN KEY(session_id) REFERENCES interview_coach_sessions(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS interview_coach_exports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id INTEGER NOT NULL,
+                export_type TEXT NOT NULL,
+                filename TEXT NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(session_id) REFERENCES interview_coach_sessions(id)
+            )
+            """
+        )
         conn.commit()
 
 

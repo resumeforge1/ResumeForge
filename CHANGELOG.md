@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.16.0-dev - Unreleased
+
+- Added Phase 7 AI Interview Coach at `/interview-coach`.
+- Added deterministic interview modes, question generation, STAR coaching, answer review scoring, live feedback, mock interview sessions, readiness scoring, cheat sheets, body language tips, and follow-up email templates.
+- Added exports for interview questions TXT, interview notes DOCX, and interview session summary PDF.
+- Added additive interview coach session, answer, and export tables.
+- Added dashboard widgets for interview readiness, recent practice sessions, average interview score, and practice streak.
+
 ## 0.15.0-dev - Unreleased
 
 - Added Phase 6 AI Job Copilot dashboard section and `/copilot` page.

@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}AI Interview Coach - ResumeForge{% endblock %}
+{% block content %}
+<section class="hero panel career-hero">
+  <div>
+    <p class="eyebrow">AI Interview Coach</p>
+    <h1>Practice with transparent coaching</h1>
+    <p class="lede">Deterministic interview prep based only on saved resume and job data. No paid APIs, no fabricated company facts, no invented experience.</p>
+  </div>
+  <div class="actions">
+    <form method="post" action="/interview-coach/start">
+      <input type="hidden" name="client_id" value="{{ client.id if client else '' }}">
+      <input type="hidden" name="job_id" value="{{ job.id if job else '' }}">
+      <select name="mode" aria-label="Interview mode">
+        {% for option in modes %}
+        <option value="{{ option }}" {% if option == mode %}selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
+      <button class="button primary" type="submit">Start Interview</button>
+    </form>
+  </div>
+</section>
+
+<section class="metric-grid">
+  <article class="metric-card"><span>Interview Readiness</span><strong>{{ readiness.score }}</strong><small>Transparent 0-100 score</small></article>
+  <article class="metric-card"><span>Questions Completed</span><strong>{{ session.summary.questions_completed if session else 0 }}</strong><small>Current session</small></article>
+  <article class="metric-card"><span>Average Score</span><strong>{{ session.summary.average_score if session else widgets.average_interview_score }}</strong><small>Answer quality</small></article>
+  <article class="metric-card"><span>Practice Streak</span><strong>{{ widgets.practice_streak }}</strong><small>Recent sessions</small></article>
+</section>
+
+<section class="grid two">
+  <article class="panel">
+    <p class="eyebrow">Interview Readiness Score</p>
+    <h2>{{ readiness.score }} / 100</h2>
+    <div class="score-bar large"><span style="width: {{ readiness.score }}%"></span></div>
+    <div class="grid two compact">
+      {% for label, value in readiness.components.items() %}
+      <div class="mini-metric"><span>{{ label|replace("_", " ")|title }}</span><strong>{{ value }}</strong></div>
+      {% endfor %}
+    </div>
+    <ul class="clean-list">
+      {% for line in readiness.explanation %}<li>{{ line }}</li>{% endfor %}
+    </ul>
+  </article>
+
+  <article class="panel">
+    <p class="eyebrow">Question Generator</p>
+    <h2>{{ questions|length }} questions</h2>
+    <p>Mode: {{ mode }}</p>
+    <p>Role: {{ context.job_title }}</p>
+    <p>Industry: {{ context.industry }}</p>
+    <div class="tag-list">
+      {% for skill in context.skills[:8] %}<span>{{ skill }}</span>{% endfor %}
+    </div>
+  </article>
+</section>
+
+<section class="grid two">
+  <article class="panel">
+    <p class="eyebrow">Mock Interview Session</p>
+    {% if current_question %}
+    <h2>Question {{ current_index + 1 }} of {{ questions|length }}</h2>
+    <p class="lede">{{ current_question.text }}</p>
+    <h3>STAR Coach</h3>
+    <div class="grid two compact">
+      {% for label, tip in current_question.star.items() %}
+      <div class="mini-metric"><span>{{ label }}</span><strong>{{ tip }}</strong></div>
+      {% endfor %}
+    </div>
+    <form method="post" action="/interview-coach/{{ session.id if session else 0 }}/answer">
+      <input type="hidden" name="question_index" value="{{ current_index }}">
+      <label>Your answer<textarea name="answer" rows="9"></textarea></label>
+      <button class="button primary" type="submit" {% if not session %}disabled{% endif %}>Review Answer</button>
+    </form>
+    <div class="actions inline">
+      {% if session %}
+      <form method="post" action="/interview-coach/{{ session.id }}/move/previous"><button class="button secondary" type="submit">Previous Question</button></form>
+      <form method="post" action="/interview-coach/{{ session.id }}/move/next"><button class="button secondary" type="submit">Next Question</button></form>
+      <form method="post" action="/interview-coach/{{ session.id }}/complete"><button class="button primary" type="submit">Mark Completed</button></form>
+      {% endif %}
+    </div>
+    {% else %}
+    <p class="empty">Start an interview session to practice questions.</p>
+    {% endif %}
+  </article>
+
+  <article class="panel">
+    <p class="eyebrow">Live Feedback Panel</p>
+    {% if session and session.answers %}
+      {% set answer = session.answers[-1] %}
+      <h2>Overall: {{ answer.review.overall }}</h2>
+      <div class="grid two compact">
+        {% for label in ["confidence", "specificity", "star_completeness", "keywords", "length", "clarity"] %}
+        <div class="mini-metric"><span>{{ label|replace("_", " ")|title }}</span><strong>{{ answer.review[label] }}</strong></div>
+        {% endfor %}
+      </div>
+      <h3>Strengths</h3>
+      <ul class="clean-list">{% for item in answer.review.strengths %}<li>{{ item }}</li>{% endfor %}</ul>
+      <h3>Weaknesses</h3>
+      <ul class="clean-list">{% for item in answer.review.weaknesses %}<li>{{ item }}</li>{% endfor %}</ul>
+      <h3>Suggested Improvements</h3>
+      <ul class="clean-list">{% for item in answer.review.suggested_improvements %}<li>{{ item }}</li>{% endfor %}</ul>
+      <h3>Suggested Keywords</h3>
+      <div class="tag-list">{% for item in answer.review.suggested_keywords %}<span>{{ item }}</span>{% endfor %}</div>
+      <h3>Missing Skills</h3>
+      <div class="tag-list">{% for item in answer.review.missing_skills %}<span>{{ item }}</span>{% else %}<span>None detected</span>{% endfor %}</div>
+      <p class="notice info">{{ answer.review.recommended_follow_up }}</p>
+    {% else %}
+      <p class="empty">Paste an answer and submit it to see deterministic feedback.</p>
+    {% endif %}
+  </article>
+</section>
+
+<section class="grid two">
+  <article class="panel">
+    <p class="eyebrow">Review Session</p>
+    <h2>Session summary</h2>
+    {% if session %}
+    <div class="grid two compact">
+      <div class="mini-metric"><span>Questions Completed</span><strong>{{ session.summary.questions_completed }}</strong></div>
+      <div class="mini-metric"><span>Average Score</span><strong>{{ session.summary.average_score }}</strong></div>
+      <div class="mini-metric"><span>Estimated Readiness</span><strong>{{ session.summary.estimated_interview_readiness }}</strong></div>
+      <div class="mini-metric"><span>Completion</span><strong>{{ session.summary.completion }}%</strong></div>
+    </div>
+    <div class="actions inline">
+      <form method="post" action="/interview-coach/{{ session.id }}/export/questions_txt"><button class="button secondary" type="submit">Export Questions TXT</button></form>
+      <form method="post" action="/interview-coach/{{ session.id }}/export/notes_docx"><button class="button secondary" type="submit">Export Notes DOCX</button></form>
+      <form method="post" action="/interview-coach/{{ session.id }}/export/summary_pdf"><button class="button secondary" type="submit">Export Summary PDF</button></form>
+    </div>
+    {% else %}
+    <p class="empty">No active session yet.</p>
+    {% endif %}
+  </article>
+
+  <article class="panel">
+    <p class="eyebrow">Common Missing Items</p>
+    <h2>What the coach checks</h2>
+    <ul class="clean-list">
+      <li>No measurable results</li>
+      <li>Weak action verbs</li>
+      <li>No outcome</li>
+      <li>No metrics</li>
+      <li>Too short or too long</li>
+      <li>Passive wording</li>
+      <li>Generic wording</li>
+    </ul>
+  </article>
+</section>
+
+<section class="grid two">
+  <article class="panel">
+    <p class="eyebrow">Cheat Sheets</p>
+    {% for title, items in cheat_sheets.items() %}
+    <h3>{{ title }}</h3>
+    <ul class="clean-list">{% for item in items %}<li>{{ item }}</li>{% endfor %}</ul>
+    {% endfor %}
+  </article>
+  <article class="panel">
+    <p class="eyebrow">Body Language Tips</p>
+    <ul class="clean-list">{% for item in body_language_tips %}<li>{{ item }}</li>{% endfor %}</ul>
+    <h2>Follow-up Email Templates</h2>
+    {% for title, body in follow_up_templates.items() %}
+    <details class="panel" data-persist="coach-{{ title|replace(' ', '-') }}"><summary>{{ title }}</summary><div class="details-body"><pre class="document-preview">{{ body }}</pre></div></details>
+    {% endfor %}
+  </article>
+</section>
+{% endblock %}

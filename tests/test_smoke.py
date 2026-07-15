@@ -16,6 +16,7 @@ def test_main_pages_return_http_200(qa_app):
         "/fresh-jobs",
         "/applications",
         "/interview-prep",
+        "/interview-coach",
         "/marketplace",
         "/settings",
     ]:
@@ -29,7 +30,7 @@ def test_health_check_reports_release_status(qa_app):
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ok"
-    assert data["version"] == "0.15.0-dev"
+    assert data["version"] == "0.16.0-dev"
     assert data["database"]["ok"] is True
     assert data["templates"]["count"] >= 8
 

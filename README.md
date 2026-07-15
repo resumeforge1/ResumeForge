@@ -2,7 +2,7 @@
 
 ResumeForge is a full-stack resume workflow app for generating client resume packages from intake data and preparing user-reviewed job applications.
 
-Current version: **0.15.0-dev**
+Current version: **0.16.0-dev**
 
 It creates:
 
@@ -116,6 +116,7 @@ ResumeForge now includes modular foundations for:
 - AI Application Package Builder with review-only tailored resume drafts, cover letters, recruiter email, LinkedIn message, interview summary, ATS checklist, and package exports
 - Phase 5 SaaS UI polish with modern navigation, responsive cards, notification banners, loading states, empty states, and an upgraded dashboard/application workspace
 - AI Job Copilot with daily brief, opportunity feed, local resume/application coaching, follow-up tracker, momentum score, salary alerts, and activity timeline
+- AI Interview Coach with deterministic question generation, STAR coaching, answer scoring, mock interview sessions, readiness scoring, cheat sheets, follow-up templates, and exports
 
 ## Fresh Job Finder
 
@@ -141,6 +142,7 @@ Related pages:
 
 - `/applications` for pipeline review and manual application entry
 - `/interview-prep` for deterministic interview preparation prompts
+- `/interview-coach` for mock interview sessions, answer review, and interview readiness scoring
 - `/fresh-jobs/providers` for provider settings, schedule settings, and alerts
 - `/copilot` for AI Job Copilot daily brief and review-first career actions
 

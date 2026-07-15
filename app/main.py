@@ -53,6 +53,26 @@ from app.services.fresh_jobs import (
     score_job,
 )
 from app.services.import_engine import extract_resume
+from app.services.interview_coach_service import (
+    INTERVIEW_MODES,
+    body_language_tips,
+    build_interview_context,
+    cheat_sheets,
+    coach_dashboard_widgets,
+    export_notes_docx,
+    export_questions,
+    export_summary_pdf,
+    follow_up_templates,
+    generate_questions,
+    get_session,
+    interview_readiness,
+    latest_session,
+    mark_completed,
+    move_session,
+    review_answer,
+    save_answer,
+    start_session,
+)
 from app.services.job_analyzer import analyze_job_description
 from app.services.plugin_service import discover_plugins
 from app.services.rewrite_engine import improve_experience, improve_skills, improve_summary
@@ -131,6 +151,7 @@ def home(request: Request) -> HTMLResponse:
             "stats": dashboard_stats(),
             "career": career_dashboard(selected_client),
             "copilot": build_copilot(selected_client),
+            "interview_coach": coach_dashboard_widgets((selected_client or {}).get("id")),
             "pipeline_statuses": PIPELINE_STATUSES,
         },
     )
@@ -549,6 +570,103 @@ def interview_prep_page(request: Request, client_id: int | None = None, job_id: 
             "message": request.query_params.get("message", ""),
         },
     )
+
+
+@app.get("/interview-coach", response_class=HTMLResponse)
+def interview_coach_page(
+    request: Request,
+    client_id: int | None = None,
+    job_id: int | None = None,
+    mode: str = "General Interview",
+    session_id: int | None = None,
+) -> HTMLResponse:
+    client = client_repo.get(client_id) if client_id else first_available_client()
+    job = fresh_jobs_repo.get_job(job_id) if job_id else (first_preppable_job(int(client["id"])) if client else None)
+    session = get_session(session_id) if session_id else latest_session(int(client["id"])) if client else None
+    context = build_interview_context(client, job, mode)
+    questions = session["questions"] if session else generate_questions(context)
+    current_index = int(session.get("current_index") or 0) if session else 0
+    current_question = questions[current_index] if questions else None
+    return templates.TemplateResponse(
+        "interview_coach.html",
+        {
+            "request": request,
+            "client": client,
+            "clients": client_repo.search("", include_archived=True),
+            "job": job,
+            "modes": INTERVIEW_MODES,
+            "mode": mode,
+            "context": context,
+            "questions": questions,
+            "current_question": current_question,
+            "current_index": current_index,
+            "session": session,
+            "readiness": interview_readiness(client, session),
+            "cheat_sheets": cheat_sheets(),
+            "body_language_tips": body_language_tips(),
+            "follow_up_templates": follow_up_templates(client, job),
+            "widgets": coach_dashboard_widgets((client or {}).get("id")),
+        },
+    )
+
+
+@app.post("/interview-coach/start")
+async def start_interview_coach(request: Request) -> RedirectResponse:
+    form = await request.form()
+    client_id = int(form.get("client_id", 0)) or None
+    job_id = int(form.get("job_id", 0)) or None
+    client = client_repo.get(client_id) if client_id else None
+    job = fresh_jobs_repo.get_job(job_id) if job_id else None
+    mode = str(form.get("mode", "General Interview"))
+    questions = generate_questions(build_interview_context(client, job, mode))
+    session_id = start_session(client_id, job_id, mode, questions)
+    return RedirectResponse(url=f"/interview-coach?client_id={client_id or ''}&job_id={job_id or ''}&mode={mode}&session_id={session_id}", status_code=303)
+
+
+@app.post("/interview-coach/{session_id}/answer")
+async def review_interview_answer(session_id: int, request: Request) -> RedirectResponse:
+    form = await request.form()
+    session = get_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Interview session not found.")
+    question_index = int(form.get("question_index", session.get("current_index", 0)))
+    answer = str(form.get("answer", ""))
+    client = client_repo.get(int(session["client_id"])) if session.get("client_id") else None
+    job = fresh_jobs_repo.get_job(int(session["discovered_job_id"])) if session.get("discovered_job_id") else None
+    context = build_interview_context(client, job, session["mode"])
+    review = review_answer(answer, session["questions"][question_index]["text"], context)
+    save_answer(session_id, question_index, answer, review)
+    return RedirectResponse(url=f"/interview-coach?session_id={session_id}&client_id={session.get('client_id') or ''}", status_code=303)
+
+
+@app.post("/interview-coach/{session_id}/move/{direction}")
+def move_interview_session(session_id: int, direction: str) -> RedirectResponse:
+    if direction not in {"next", "previous"}:
+        raise HTTPException(status_code=400, detail="Invalid direction.")
+    move_session(session_id, direction)
+    return RedirectResponse(url=f"/interview-coach?session_id={session_id}", status_code=303)
+
+
+@app.post("/interview-coach/{session_id}/complete")
+def complete_interview_session(session_id: int) -> RedirectResponse:
+    mark_completed(session_id)
+    return RedirectResponse(url=f"/interview-coach?session_id={session_id}&message=Interview session completed", status_code=303)
+
+
+@app.post("/interview-coach/{session_id}/export/{export_type}")
+def export_interview_coach(session_id: int, export_type: str) -> FileResponse:
+    session = get_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Interview session not found.")
+    if export_type == "questions_txt":
+        filename = export_questions(session)
+    elif export_type == "notes_docx":
+        filename = export_notes_docx(session)
+    elif export_type == "summary_pdf":
+        filename = export_summary_pdf(session)
+    else:
+        raise HTTPException(status_code=400, detail="Invalid interview export type.")
+    return download_file(filename)
 
 
 @app.post("/interview-prep/notes")

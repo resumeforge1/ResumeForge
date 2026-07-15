@@ -96,6 +96,26 @@
   <article class="panel">
     <div class="section-heading compact">
       <div>
+        <p class="eyebrow">AI Interview Coach</p>
+        <h2>Practice readiness</h2>
+      </div>
+      <a class="button secondary" href="/interview-coach{% if career.client %}?client_id={{ career.client.id }}{% endif %}">Open Coach</a>
+    </div>
+    <div class="grid two compact">
+      <div class="mini-metric"><span>Average Interview Score</span><strong>{{ interview_coach.average_interview_score }}</strong></div>
+      <div class="mini-metric"><span>Practice Streak</span><strong>{{ interview_coach.practice_streak }}</strong></div>
+    </div>
+    <h3>Recent Practice Sessions</h3>
+    {% for session in interview_coach.recent_practice_sessions %}
+    <p class="note">{{ session.mode }} <span>{{ "Completed" if session.completed else "In progress" }} | {{ session.updated_at }}</span></p>
+    {% else %}
+    <p class="empty">No practice sessions yet. Start a mock interview when ready.</p>
+    {% endfor %}
+  </article>
+
+  <article class="panel">
+    <div class="section-heading compact">
+      <div>
         <p class="eyebrow">Resume Score</p>
         <h2>Internal readiness breakdown</h2>
       </div>
