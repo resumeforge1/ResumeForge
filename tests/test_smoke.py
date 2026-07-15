@@ -8,6 +8,7 @@ def test_main_pages_return_http_200(qa_app):
     for path in [
         "/",
         "/dashboard",
+        "/copilot",
         "/health",
         "/clients/new",
         f"/clients/{client_id}/preview",
@@ -28,7 +29,7 @@ def test_health_check_reports_release_status(qa_app):
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ok"
-    assert data["version"] == "0.14.0-dev"
+    assert data["version"] == "0.15.0-dev"
     assert data["database"]["ok"] is True
     assert data["templates"]["count"] >= 8
 

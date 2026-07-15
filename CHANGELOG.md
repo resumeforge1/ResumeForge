@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.15.0-dev - Unreleased
+
+- Added Phase 6 AI Job Copilot dashboard section and `/copilot` page.
+- Added deterministic Daily Job Brief with jobs found today, high match jobs, saved jobs, applications waiting, and interviews scheduled.
+- Added Opportunity Feed ranked by match score, salary signal, posting freshness, and manual priority.
+- Added local Resume Coach, Application Coach, Follow-up Tracker, Salary Opportunity Alerts, Career Momentum Score, and Activity Timeline.
+- Added dashboard widgets for upcoming interviews, recent follow-ups, high-match jobs, recent resume improvements, career momentum, and application velocity.
+- Preserved review-first behavior with no automatic applications, scraping, paid API requirement, or fabricated candidate/company data.
+
 ## 0.14.0-dev - Unreleased
 
 - Added Phase 5 SaaS UI/UX polish across the shared layout, dashboard, Fresh Jobs, Application Package, Interview Prep, and Settings pages.

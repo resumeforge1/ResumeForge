@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}AI Job Copilot - ResumeForge{% endblock %}
+{% block content %}
+<section class="hero panel career-hero">
+  <div>
+    <p class="eyebrow">AI Job Copilot</p>
+    <h1>Today’s Summary</h1>
+    <p class="lede">A deterministic, review-first career assistant built from local ResumeForge data. No applications are submitted automatically.</p>
+  </div>
+  <div class="actions">
+    <a class="button primary" href="/fresh-jobs{% if client %}?client_id={{ client.id }}{% endif %}">Check Fresh Jobs</a>
+    <a class="button secondary" href="/applications{% if client %}?client_id={{ client.id }}{% endif %}">Applications</a>
+  </div>
+</section>
+
+<section class="metric-grid">
+  <article class="metric-card"><span>Jobs Found Today</span><strong>{{ copilot.summary.jobs_found_today }}</strong><small>Discovered locally</small></article>
+  <article class="metric-card"><span>High Match Jobs</span><strong>{{ copilot.summary.high_match_jobs }}</strong><small>Score 75+</small></article>
+  <article class="metric-card"><span>Saved Jobs</span><strong>{{ copilot.summary.saved_jobs }}</strong><small>Waiting for review</small></article>
+  <article class="metric-card"><span>Applications Waiting</span><strong>{{ copilot.summary.applications_waiting }}</strong><small>Ready or applied</small></article>
+  <article class="metric-card"><span>Interviews Scheduled</span><strong>{{ copilot.summary.interviews_scheduled }}</strong><small>From tracked applications</small></article>
+  <article class="metric-card"><span>Career Momentum</span><strong>{{ copilot.momentum.score }}</strong><small>Local 0-100 score</small></article>
+</section>
+
+<section class="grid two">
+  <article class="panel">
+    <p class="eyebrow">Recommended Actions</p>
+    <h2>Next best steps</h2>
+    <ul class="clean-list">
+      {% for action in copilot.recommended_actions %}
+      <li>{{ action }}</li>
+      {% endfor %}
+    </ul>
+  </article>
+  <article class="panel">
+    <p class="eyebrow">Career Momentum Score</p>
+    <h2>{{ copilot.momentum.score }} / 100</h2>
+    <div class="score-bar large"><span style="width: {{ copilot.momentum.score }}%"></span></div>
+    <div class="grid two compact">
+      {% for label, value in copilot.momentum.components.items() %}
+      <div class="mini-metric"><span>{{ label|replace("_", " ")|title }}</span><strong>{{ value }}</strong></div>
+      {% endfor %}
+    </div>
+    <ul class="clean-list">
+      {% for line in copilot.momentum.explanation %}
+      <li>{{ line }}</li>
+      {% endfor %}
+    </ul>
+  </article>
+</section>
+
+<section class="panel">
+  <div class="section-heading">
+    <div>
+      <p class="eyebrow">Opportunity Feed</p>
+      <h2>Ranked opportunities</h2>
+    </div>
+  </div>
+  <div class="fresh-job-list">
+    {% for job in copilot.opportunities %}
+    <article class="fresh-job-card">
+      <div class="fresh-job-head">
+        <div>
+          <p class="eyebrow">{{ job.opportunity_level }}</p>
+          <h2>{{ job.title }}</h2>
+          <div class="fresh-job-meta">
+            <span class="badge">{{ job.company }}</span>
+            <span class="badge">{{ job.location or "Location unavailable" }}</span>
+            <span class="badge warning">${{ "{:,}".format(job.salary_max or job.salary_min) if job.salary_max or job.salary_min else "Salary unavailable" }}</span>
+            <span class="badge">{{ job.source }}</span>
+          </div>
+        </div>
+        <strong class="score-badge {% if job.opportunity_score >= 85 %}score-high{% elif job.opportunity_score >= 65 %}score-medium{% else %}score-low{% endif %}">{{ job.opportunity_score }}</strong>
+      </div>
+      <ul class="clean-list">
+        {% for reason in job.ranking_explanation %}
+        <li>{{ reason }}</li>
+        {% endfor %}
+      </ul>
+      {% if client %}<a class="button secondary" href="/application-package/{{ client.id }}/{{ job.id }}">Prepare Application</a>{% endif %}
+    </article>
+    {% else %}
+    <div class="empty-state">
+      <span class="empty-icon"><svg width="20" height="20"><use href="#icon-jobs"></use></svg></span>
+      <p>No opportunities yet. Run Fresh Jobs or import a job manually.</p>
+      <a class="button primary" href="/fresh-jobs">Open Fresh Jobs</a>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="grid two">
+  <article class="panel">
+    <p class="eyebrow">Resume Coach</p>
+    <h2>Resume Improvement Suggestions</h2>
+    <ul class="clean-list">
+      {% for item in copilot.resume_coach.suggestions %}
+      <li>{{ item }}</li>
+      {% endfor %}
+    </ul>
+  </article>
+  <article class="panel">
+    <p class="eyebrow">Application Coach</p>
+    <h2>Application priorities</h2>
+    <div class="grid two compact">
+      <div class="mini-metric"><span>Need Follow-up</span><strong>{{ copilot.application_coach.applications_needing_followup|length }}</strong></div>
+      <div class="mini-metric"><span>Ready To Submit</span><strong>{{ copilot.application_coach.applications_ready_to_submit|length }}</strong></div>
+      <div class="mini-metric"><span>Old Saved Jobs</span><strong>{{ copilot.application_coach.old_saved_jobs|length }}</strong></div>
+      <div class="mini-metric"><span>Dismissed Jobs</span><strong>{{ copilot.application_coach.dismissed_jobs|length }}</strong></div>
+    </div>
+  </article>
+</section>
+
+<section class="grid two">
+  <article class="panel">
+    <p class="eyebrow">Follow-up Tracker</p>
+    <h2>Upcoming Follow-ups</h2>
+    {% for item in copilot.followups[:6] %}
+    <p class="note">{{ item.company }} - {{ item.position }} <span>Status: {{ item.status }} | Follow-up due: {{ item.follow_up_due }}</span></p>
+    {% else %}
+    <p class="empty">No follow-ups yet. Add an application to start tracking.</p>
+    {% endfor %}
+  </article>
+  <article class="panel">
+    <p class="eyebrow">Interview Reminders</p>
+    <h2>Upcoming Interviews</h2>
+    {% for item in copilot.widgets.upcoming_interviews %}
+    <p class="note">{{ item.company }} - {{ item.position }} <span>{{ item.status }} | {{ item.date_applied or "Date not set" }}</span></p>
+    {% else %}
+    <p class="empty">No interviews scheduled.</p>
+    {% endfor %}
+  </article>
+</section>
+
+<section class="grid two">
+  <article class="panel">
+    <p class="eyebrow">Salary Opportunity Alerts</p>
+    <h2>Listing-based salary signals</h2>
+    <ul class="clean-list">
+      {% for alert in copilot.salary_alerts %}
+      <li>{{ alert }}</li>
+      {% endfor %}
+    </ul>
+  </article>
+  <article class="panel">
+    <p class="eyebrow">Activity Timeline</p>
+    <h2>Recent career activity</h2>
+    {% for event in copilot.timeline %}
+    <p class="note">{{ event.kind }} <span>{{ event.label }} | {{ event.created_at }}</span></p>
+    {% else %}
+    <p class="empty">No timeline activity yet.</p>
+    {% endfor %}
+  </article>
+</section>
+{% endblock %}

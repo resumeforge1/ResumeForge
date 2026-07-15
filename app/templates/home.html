@@ -58,6 +58,40 @@
   </article>
 </section>
 
+<section class="panel">
+  <div class="section-heading">
+    <div>
+      <p class="eyebrow">AI Job Copilot</p>
+      <h2>Today’s career brief</h2>
+    </div>
+    <a class="button primary" href="/copilot{% if career.client %}?client_id={{ career.client.id }}{% endif %}">Open Copilot</a>
+  </div>
+  <div class="metric-grid">
+    <article class="metric-card"><span>Jobs Found Today</span><strong>{{ copilot.summary.jobs_found_today }}</strong><small>New local discoveries</small></article>
+    <article class="metric-card"><span>High Match Jobs</span><strong>{{ copilot.summary.high_match_jobs }}</strong><small>Score 75+</small></article>
+    <article class="metric-card"><span>Applications Waiting</span><strong>{{ copilot.summary.applications_waiting }}</strong><small>Need review or follow-up</small></article>
+    <article class="metric-card"><span>Career Momentum</span><strong>{{ copilot.momentum.score }}</strong><small>Local 0-100 score</small></article>
+  </div>
+  <div class="grid two">
+    <div>
+      <h3>Recommended Next Actions</h3>
+      <ul class="clean-list">
+        {% for action in copilot.recommended_actions[:4] %}
+        <li>{{ action }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    <div>
+      <h3>Salary Opportunity Alerts</h3>
+      <ul class="clean-list">
+        {% for alert in copilot.salary_alerts[:3] %}
+        <li>{{ alert }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</section>
+
 <section class="grid two">
   <article class="panel">
     <div class="section-heading compact">

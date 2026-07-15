@@ -31,6 +31,7 @@ from app.services.dashboard_service import (
     get_interview_notes,
     save_interview_notes,
 )
+from app.services.copilot_service import build_copilot
 from app.services.application_package_service import (
     PACKAGE_EXPORT_TYPES,
     build_application_package,
@@ -129,6 +130,7 @@ def home(request: Request) -> HTMLResponse:
             "settings": settings_repo.get(),
             "stats": dashboard_stats(),
             "career": career_dashboard(selected_client),
+            "copilot": build_copilot(selected_client),
             "pipeline_statuses": PIPELINE_STATUSES,
         },
     )
@@ -255,6 +257,20 @@ def fresh_jobs_page(
             "alerts": fresh_jobs_repo.list_alerts(int(client["id"])),
             "schedule": fresh_jobs_repo.get_schedule(),
             "message": request.query_params.get("message", ""),
+        },
+    )
+
+
+@app.get("/copilot", response_class=HTMLResponse)
+def copilot_page(request: Request, client_id: int | None = None) -> HTMLResponse:
+    client = client_repo.get(client_id) if client_id else first_available_client()
+    return templates.TemplateResponse(
+        "copilot.html",
+        {
+            "request": request,
+            "client": client,
+            "clients": client_repo.search("", include_archived=True),
+            "copilot": build_copilot(client),
         },
     )
 
