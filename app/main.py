@@ -23,6 +23,10 @@ from app.sample_data import SAMPLE_ALFREDO_CRUZ_CDL
 from app.services.dashboard_service import client_timeline, dashboard_stats, generated_files_for_client
 from app.services.fresh_jobs import (
     MockJobProvider,
+    ProviderFailure,
+    USAJobsProvider,
+    build_manual_job,
+    calculate_next_check_at,
     current_utc,
     deduplicate_jobs,
     extract_candidate_profile,
@@ -52,12 +56,14 @@ application_repo = ApplicationRepository()
 fresh_jobs_repo = FreshJobsRepository()
 settings_repo = SettingsRepository()
 job_provider = MockJobProvider()
+job_providers = [job_provider, USAJobsProvider()]
 
 
 @app.on_event("startup")
 def startup() -> None:
     init_db()
     OUTPUT_DIR.mkdir(exist_ok=True)
+    sync_job_providers()
     template_count = len(list_template_configs())
     ai_config = load_ai_config()
     logger.info("ResumeForge version: %s", get_version())
@@ -184,7 +190,9 @@ def fresh_jobs_page(
     client_id: int | None = None,
     freshness: str = "past_7_days",
     sort: str = "best_match",
+    new_only: bool = False,
 ) -> HTMLResponse:
+    sync_job_providers()
     client = client_repo.get(client_id) if client_id else first_available_client()
     if client is None:
         return templates.TemplateResponse(
@@ -198,12 +206,18 @@ def fresh_jobs_page(
                 "jobs": [],
                 "freshness": freshness,
                 "sort": sort,
+                "new_only": new_only,
+                "providers": provider_status_rows(),
+                "alerts": fresh_jobs_repo.list_alerts(),
+                "schedule": fresh_jobs_repo.get_schedule(),
                 "message": "",
             },
         )
     profile = fresh_jobs_repo.get_profile(int(client["id"])) or default_job_search_profile(client)
     jobs = [enrich_fresh_job(job) for job in fresh_jobs_repo.list_matches(int(client["id"]), sort=sort)]
     jobs = filter_by_freshness(jobs, freshness)
+    if new_only:
+        jobs = [job for job in jobs if job.get("discovery_state") == "new"]
     return templates.TemplateResponse(
         "fresh_jobs.html",
         {
@@ -215,6 +229,10 @@ def fresh_jobs_page(
             "jobs": jobs,
             "freshness": freshness,
             "sort": sort,
+            "new_only": new_only,
+            "providers": provider_status_rows(),
+            "alerts": fresh_jobs_repo.list_alerts(int(client["id"])),
+            "schedule": fresh_jobs_repo.get_schedule(),
             "message": request.query_params.get("message", ""),
         },
     )
@@ -236,21 +254,103 @@ async def check_fresh_jobs(request: Request) -> RedirectResponse:
     client = require_client(client_id)
     profile = fresh_jobs_repo.get_profile(client_id) or default_job_search_profile(client)
     candidate_profile = extract_candidate_profile(client)
-    raw_jobs = job_provider.fetch_jobs(profile, candidate_profile)
-    fresh_jobs = filter_by_freshness(deduplicate_jobs(raw_jobs), str(form.get("freshness", "past_7_days")))
+    freshness = str(form.get("freshness", "past_7_days"))
+    raw_jobs: list[dict[str, Any]] = []
     new_jobs = 0
+    updated_jobs = 0
+    error_count = 0
+    sync_job_providers()
+    enabled_providers = enabled_job_providers()
+    for provider in enabled_providers:
+        provider_jobs: list[dict[str, Any]] = []
+        try:
+            provider_jobs = provider.fetch_jobs(profile, candidate_profile)
+            raw_jobs.extend(provider_jobs)
+            fresh_jobs_repo.update_provider_status(provider.name, provider.health()["status"], "")
+        except ProviderFailure as exc:
+            error_count += 1
+            fresh_jobs_repo.update_provider_status(provider.name, "error", str(exc))
+            fresh_jobs_repo.create_alert(client_id, "provider_error", f"{provider.label} could not complete: {exc}", provider_key=provider.name)
+        fresh_jobs_repo.log_provider_run(
+            client_id,
+            provider.name,
+            "ok" if provider_jobs else ("not_configured" if provider.health()["status"] == "not_configured" else "empty"),
+            jobs_found=len(provider_jobs),
+            message=provider.health()["message"],
+            finished_at=current_utc().isoformat(),
+        )
+    fresh_jobs = filter_by_freshness(deduplicate_jobs(raw_jobs), freshness)
     for job in fresh_jobs:
-        job_id = fresh_jobs_repo.insert_job(job)
-        if fresh_jobs_repo.get_saved_status(client_id, job_id) == "discovered":
+        job_id, state = fresh_jobs_repo.insert_job_with_state(job)
+        if state == "new":
             new_jobs += 1
-        fresh_jobs_repo.save_match(client_id, job_id, score_job(job, candidate_profile, profile))
+        elif state == "updated":
+            updated_jobs += 1
+        match = score_job(job, candidate_profile, profile)
+        fresh_jobs_repo.save_match(client_id, job_id, match)
+        if state == "new" and int(match.get("score", 0)) >= 75:
+            fresh_jobs_repo.create_alert(client_id, "new_match", f"New strong match: {job.get('title')} at {job.get('company')}", job_id, job.get("source", ""))
     checked_at = current_utc().isoformat()
     fresh_jobs_repo.mark_checked(client_id, checked_at)
-    fresh_jobs_repo.create_run(client_id, job_provider.name, {"freshness": form.get("freshness", "past_7_days")}, len(fresh_jobs), new_jobs, checked_at)
+    fresh_jobs_repo.create_run(client_id, "multi", {"freshness": freshness, "providers": [provider.name for provider in enabled_providers]}, len(fresh_jobs), new_jobs, checked_at)
     return RedirectResponse(
-        url=f"/fresh-jobs?client_id={client_id}&freshness={form.get('freshness', 'past_7_days')}&message=Fresh jobs checked",
+        url=f"/fresh-jobs?client_id={client_id}&freshness={freshness}&message=Fresh jobs checked: {new_jobs} new, {updated_jobs} updated, {error_count} provider errors",
         status_code=303,
     )
+
+
+@app.get("/fresh-jobs/providers", response_class=HTMLResponse)
+def fresh_job_providers_page(request: Request, client_id: int | None = None) -> HTMLResponse:
+    sync_job_providers()
+    return templates.TemplateResponse(
+        "fresh_job_providers.html",
+        {
+            "request": request,
+            "client_id": client_id,
+            "providers": provider_status_rows(),
+            "alerts": fresh_jobs_repo.list_alerts(client_id, include_read=True),
+            "schedule": fresh_jobs_repo.get_schedule(),
+            "message": request.query_params.get("message", ""),
+        },
+    )
+
+
+@app.post("/fresh-jobs/providers/{provider_key}/toggle")
+async def toggle_fresh_job_provider(provider_key: str, request: Request) -> RedirectResponse:
+    form = await request.form()
+    fresh_jobs_repo.set_provider_enabled(provider_key, str(form.get("enabled", "0")) == "1")
+    return RedirectResponse(url="/fresh-jobs/providers?message=Provider setting saved", status_code=303)
+
+
+@app.post("/fresh-jobs/alerts/{alert_id}/read")
+def mark_fresh_job_alert_read(alert_id: int) -> RedirectResponse:
+    fresh_jobs_repo.mark_alert_read(alert_id)
+    return RedirectResponse(url="/fresh-jobs/providers?message=Alert marked read", status_code=303)
+
+
+@app.post("/fresh-jobs/schedule")
+async def save_fresh_job_schedule(request: Request) -> RedirectResponse:
+    form = await request.form()
+    interval_key = str(form.get("interval_key", "daily"))
+    fresh_jobs_repo.save_schedule(str(form.get("enabled", "0")) == "1", interval_key, calculate_next_check_at(interval_key))
+    return RedirectResponse(url="/fresh-jobs/providers?message=Schedule saved", status_code=303)
+
+
+@app.post("/fresh-jobs/manual-import")
+async def import_manual_fresh_job(request: Request) -> RedirectResponse:
+    form = await request.form()
+    client_id = int(form.get("client_id", 0))
+    client = require_client(client_id)
+    try:
+        job = build_manual_job({key: str(value) for key, value in form.items()})
+    except ValueError as exc:
+        fresh_jobs_repo.create_alert(client_id, "manual_import_error", str(exc), provider_key="manual")
+        return RedirectResponse(url=f"/fresh-jobs/providers?client_id={client_id}&message={exc}", status_code=303)
+    job_id = fresh_jobs_repo.create_imported_job(client_id, job, source_url=job.get("apply_url", ""), salary=str(form.get("salary", "")))
+    profile = fresh_jobs_repo.get_profile(client_id) or default_job_search_profile(client)
+    fresh_jobs_repo.save_match(client_id, job_id, score_job(job, extract_candidate_profile(client), profile))
+    fresh_jobs_repo.create_alert(client_id, "manual_import", f"Manual job imported: {job.get('title')} at {job.get('company')}", job_id, "manual")
+    return RedirectResponse(url=f"/fresh-jobs?client_id={client_id}&message=Manual job imported", status_code=303)
 
 
 @app.post("/fresh-jobs/{job_id}/status")
@@ -502,6 +602,51 @@ def require_client(client_id: int) -> dict[str, Any]:
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found.")
     return client
+
+
+def sync_job_providers() -> None:
+    existing = {row["provider_key"]: row for row in fresh_jobs_repo.provider_rows()}
+    for provider in job_providers:
+        health = provider.health()
+        if provider.name not in existing:
+            fresh_jobs_repo.upsert_provider(
+                provider.name,
+                provider.label,
+                provider.name == "mock",
+                health["status"],
+                "" if health["status"] != "error" else health["message"],
+            )
+        else:
+            fresh_jobs_repo.update_provider_status(
+                provider.name,
+                health["status"],
+                "" if health["status"] != "error" else health["message"],
+            )
+
+
+def provider_status_rows() -> list[dict[str, Any]]:
+    sync_job_providers()
+    provider_map = {provider.name: provider for provider in job_providers}
+    rows = []
+    for row in fresh_jobs_repo.provider_rows():
+        provider = provider_map.get(row["provider_key"])
+        health = provider.health() if provider else {"status": row.get("status", "unknown"), "message": ""}
+        merged = dict(row)
+        merged["label"] = row.get("label") or (provider.label if provider else row["provider_key"])
+        merged["health_status"] = health.get("status", row.get("status", "unknown"))
+        merged["health_message"] = health.get("message", "")
+        rows.append(merged)
+    return rows
+
+
+def enabled_job_providers() -> list[Any]:
+    rows = {row["provider_key"]: row for row in fresh_jobs_repo.provider_rows()}
+    enabled = []
+    for provider in job_providers:
+        row = rows.get(provider.name)
+        if row and int(row.get("enabled") or 0) == 1:
+            enabled.append(provider)
+    return enabled
 
 
 def first_available_client() -> dict[str, Any] | None:

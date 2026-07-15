@@ -453,6 +453,51 @@ select {
   gap: 18px;
 }
 
+.provider-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.provider-card,
+.alert-card {
+  align-items: center;
+  background: #f5f8fb;
+  border: 1px solid var(--line);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 14px;
+}
+
+.provider-card p,
+.alert-card p {
+  margin: 4px 0;
+}
+
+.alert-card span {
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.muted-alert {
+  opacity: 0.68;
+}
+
+.checkbox-row {
+  align-items: center;
+  color: var(--ink);
+  display: flex;
+  gap: 8px;
+}
+
+.checkbox-row input {
+  min-height: auto;
+  width: auto;
+}
+
 .fresh-job-card {
   background: var(--surface);
   border: 1px solid var(--line);

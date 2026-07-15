@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Job Providers - ResumeForge{% endblock %}
+{% block content %}
+<section class="hero">
+  <div>
+    <p class="eyebrow">Fresh Job Finder</p>
+    <h1>Provider settings and alerts</h1>
+    <p>Manage permitted job sources, manual imports, and scheduled freshness checks. No provider submits applications.</p>
+  </div>
+  <div class="actions">
+    <a class="button secondary" href="/fresh-jobs{% if client_id %}?client_id={{ client_id }}{% endif %}">Back to Fresh Jobs</a>
+    {% if message %}<strong class="pill">{{ message }}</strong>{% endif %}
+  </div>
+</section>
+
+<section class="grid two">
+  <div class="panel">
+    <p class="eyebrow">Providers</p>
+    <h2>Source status</h2>
+    <div class="provider-list">
+      {% for provider in providers %}
+      <article class="provider-card">
+        <div>
+          <strong>{{ provider.label }}</strong>
+          <p>{{ provider.health_message or provider.last_error or "Ready" }}</p>
+          <span class="muted">Status: {{ provider.health_status }} | Enabled: {{ "Yes" if provider.enabled else "No" }}</span>
+        </div>
+        <form method="post" action="/fresh-jobs/providers/{{ provider.provider_key }}/toggle">
+          <input type="hidden" name="enabled" value="{{ 0 if provider.enabled else 1 }}">
+          <button class="button secondary" type="submit">{{ "Disable" if provider.enabled else "Enable" }}</button>
+        </form>
+      </article>
+      {% endfor %}
+    </div>
+  </div>
+
+  <form class="panel" method="post" action="/fresh-jobs/schedule">
+    <p class="eyebrow">Scheduled Checks</p>
+    <h2>Recurring search settings</h2>
+    <label class="checkbox-row"><input type="checkbox" name="enabled" value="1" {% if schedule.enabled %}checked{% endif %}> Enable scheduled checks</label>
+    <label>Interval
+      <select name="interval_key">
+        {% for value, label in [("hourly", "Hourly"), ("every_3_hours", "Every 3 hours"), ("twice_daily", "Twice daily"), ("daily", "Daily")] %}
+        <option value="{{ value }}" {% if schedule.interval_key == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <p class="muted">Last checked: {{ schedule.last_checked_at or "Not checked yet" }}</p>
+    <p class="muted">Next check: {{ schedule.next_check_at or "Not scheduled" }}</p>
+    <button class="button primary" type="submit">Save Schedule</button>
+  </form>
+</section>
+
+<section class="grid two">
+  <form class="panel" method="post" action="/fresh-jobs/manual-import">
+    <p class="eyebrow">Manual Import</p>
+    <h2>Add a job posting</h2>
+    <input type="hidden" name="client_id" value="{{ client_id or 0 }}">
+    <label>Title<input name="title" required></label>
+    <label>Company<input name="company" required></label>
+    <label>Location<input name="location"></label>
+    <label>Apply URL<input name="apply_url" placeholder="https://company.example/jobs/123"></label>
+    <label>Salary<input name="salary" placeholder="68000 - 82000"></label>
+    <label>Description<textarea name="description" rows="7" required></textarea></label>
+    <button class="button primary" type="submit">Import Job</button>
+  </form>
+
+  <div class="panel">
+    <p class="eyebrow">Alerts</p>
+    <h2>Provider and job updates</h2>
+    {% for alert in alerts %}
+    <article class="alert-card {% if alert.is_read %}muted-alert{% endif %}">
+      <p>{{ alert.message }}</p>
+      <span>{{ alert.alert_type }} | {{ alert.created_at }}</span>
+      {% if not alert.is_read %}
+      <form method="post" action="/fresh-jobs/alerts/{{ alert.id }}/read">
+        <button class="button secondary" type="submit">Mark Read</button>
+      </form>
+      {% endif %}
+    </article>
+    {% else %}
+    <p class="empty">No alerts yet.</p>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

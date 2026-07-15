@@ -2,7 +2,7 @@
 
 ResumeForge is a full-stack resume workflow app for generating client resume packages from intake data and preparing user-reviewed job applications.
 
-Current version: **0.10.0-dev**
+Current version: **0.11.0-dev**
 
 It creates:
 
@@ -111,7 +111,7 @@ ResumeForge now includes modular foundations for:
 - Settings for accent color, fonts, header style, spacing, margins, section order, and branding
 - Plugin discovery from `plugins/*/plugin.json`
 - Provider abstraction for OpenAI, Anthropic, Gemini, Ollama, and mock provider
-- Fresh Job Finder with deterministic mock provider, freshness filters, transparent match scoring, and review-only application drafts
+- Fresh Job Finder with deterministic mock provider, optional official API provider settings, manual imports, freshness filters, transparent match scoring, alerts, schedule settings, and review-only application drafts
 
 ## Fresh Job Finder
 
@@ -119,13 +119,15 @@ The Fresh Job Finder page at `/fresh-jobs` lets users:
 
 - Store job preferences
 - Extract a candidate profile from saved resume data
-- Manually check for deterministic mock jobs
+- Manually check deterministic mock jobs and enabled permitted providers
+- Import a job posting manually with public URL validation
 - Filter jobs by posting freshness
 - Review transparent 0-100 match score breakdowns
 - Save or dismiss jobs
 - Prepare application drafts for review
+- Manage providers, alerts, and scheduled-check settings at `/fresh-jobs/providers`
 
-It does not scrape third-party job sites, bypass CAPTCHA, store external credentials, submit applications, or auto-apply.
+It does not scrape third-party job sites, bypass CAPTCHA, store external job-site credentials, submit applications, or auto-apply. USAJOBS support uses the official public API and remains disabled until `USAJOBS_API_KEY` and `USAJOBS_USER_AGENT` are configured.
 
 ## Exports
 

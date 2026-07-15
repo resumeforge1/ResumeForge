@@ -154,10 +154,15 @@ def init_db() -> None:
                 expiration_status TEXT DEFAULT 'unknown',
                 raw_payload TEXT DEFAULT '{}',
                 normalized_key TEXT,
+                discovery_state TEXT DEFAULT 'new',
+                provider_confidence INTEGER DEFAULT 80,
+                duplicate_confidence INTEGER DEFAULT 100,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
+        ensure_discovered_job_columns(conn)
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS job_matches (
@@ -222,6 +227,98 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS job_providers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                provider_key TEXT NOT NULL UNIQUE,
+                label TEXT NOT NULL,
+                enabled INTEGER DEFAULT 0,
+                status TEXT DEFAULT 'not_configured',
+                last_success_at TEXT,
+                last_error TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS job_provider_settings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                provider_key TEXT NOT NULL,
+                setting_key TEXT NOT NULL,
+                setting_value TEXT DEFAULT '',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(provider_key, setting_key)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS job_alerts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id INTEGER,
+                alert_type TEXT NOT NULL,
+                message TEXT NOT NULL,
+                related_job_id INTEGER,
+                provider_key TEXT,
+                is_read INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS job_schedule_settings (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                enabled INTEGER DEFAULT 0,
+                interval_key TEXT DEFAULT 'daily',
+                next_check_at TEXT,
+                last_checked_at TEXT,
+                running INTEGER DEFAULT 0,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute("INSERT OR IGNORE INTO job_schedule_settings (id) VALUES (1)")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS provider_run_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id INTEGER,
+                provider_key TEXT NOT NULL,
+                status TEXT NOT NULL,
+                jobs_found INTEGER DEFAULT 0,
+                new_jobs INTEGER DEFAULT 0,
+                updated_jobs INTEGER DEFAULT 0,
+                error_count INTEGER DEFAULT 0,
+                message TEXT DEFAULT '',
+                started_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                finished_at TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS imported_jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id INTEGER NOT NULL,
+                discovered_job_id INTEGER,
+                source_url TEXT,
+                title TEXT NOT NULL,
+                company TEXT NOT NULL,
+                location TEXT,
+                salary TEXT,
+                posted_at TEXT,
+                description TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(client_id) REFERENCES clients(id),
+                FOREIGN KEY(discovered_job_id) REFERENCES discovered_jobs(id)
+            )
+            """
+        )
         conn.commit()
 
 
@@ -236,6 +333,19 @@ def ensure_client_columns(conn: sqlite3.Connection) -> None:
     for name, definition in columns.items():
         if name not in existing:
             conn.execute(f"ALTER TABLE clients ADD COLUMN {name} {definition}")
+
+
+def ensure_discovered_job_columns(conn: sqlite3.Connection) -> None:
+    existing = {row["name"] for row in conn.execute("PRAGMA table_info(discovered_jobs)").fetchall()}
+    columns = {
+        "discovery_state": "TEXT DEFAULT 'new'",
+        "provider_confidence": "INTEGER DEFAULT 80",
+        "duplicate_confidence": "INTEGER DEFAULT 100",
+        "updated_at": "TEXT DEFAULT CURRENT_TIMESTAMP",
+    }
+    for name, definition in columns.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE discovered_jobs ADD COLUMN {name} {definition}")
 
 
 def save_client(data: dict[str, Any]) -> int:

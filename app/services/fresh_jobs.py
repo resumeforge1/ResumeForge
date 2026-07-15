@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import ipaddress
 import math
+import os
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from difflib import SequenceMatcher
 from typing import Any, Protocol
+from urllib.parse import urlparse
+
+import httpx
 
 from app.services.job_analyzer import analyze_job_description
 
@@ -18,6 +24,17 @@ FRESHNESS_WINDOWS = {
     "past_3_days": timedelta(days=3),
     "past_7_days": timedelta(days=7),
 }
+
+SCHEDULE_INTERVALS = {
+    "hourly": timedelta(hours=1),
+    "every_3_hours": timedelta(hours=3),
+    "twice_daily": timedelta(hours=12),
+    "daily": timedelta(days=1),
+}
+
+
+class ProviderFailure(RuntimeError):
+    """Raised when a configured provider fails without exposing credentials."""
 
 
 @dataclass(frozen=True)
@@ -54,6 +71,15 @@ class JobSourceProvider(Protocol):
 
 class MockJobProvider:
     name = "mock"
+    label = "Mock Jobs"
+
+    def health(self) -> dict[str, Any]:
+        return {
+            "provider_key": self.name,
+            "label": self.label,
+            "status": "ready",
+            "message": "Deterministic local provider for tests and demos.",
+        }
 
     def fetch_jobs(self, preferences: dict[str, Any], candidate_profile: dict[str, Any]) -> list[dict[str, Any]]:
         now = current_utc()
@@ -133,6 +159,165 @@ class MockJobProvider:
         ]
         excluded = {normalize_text(company) for company in preferences.get("excluded_companies", [])}
         return [job.to_dict() for job in jobs if normalize_text(job.company) not in excluded]
+
+
+class USAJobsProvider:
+    name = "usajobs"
+    label = "USAJOBS"
+    endpoint = "https://data.usajobs.gov/api/search"
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        user_agent: str | None = None,
+        http_client: Any | None = None,
+        timeout: float = 8.0,
+    ) -> None:
+        self.api_key = api_key if api_key is not None else os.getenv("USAJOBS_API_KEY", "")
+        self.user_agent = user_agent if user_agent is not None else os.getenv("USAJOBS_USER_AGENT", "")
+        self.http_client = http_client or httpx.Client()
+        self.timeout = timeout
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.api_key and self.user_agent)
+
+    def health(self) -> dict[str, Any]:
+        if not self.configured:
+            return {
+                "provider_key": self.name,
+                "label": self.label,
+                "status": "not_configured",
+                "message": "Set USAJOBS_API_KEY and USAJOBS_USER_AGENT to enable this provider.",
+            }
+        return {
+            "provider_key": self.name,
+            "label": self.label,
+            "status": "ready",
+            "message": "Configured with official USAJOBS API credentials.",
+        }
+
+    def fetch_jobs(self, preferences: dict[str, Any], candidate_profile: dict[str, Any]) -> list[dict[str, Any]]:
+        if not self.configured:
+            return []
+        params = {
+            "Keyword": preferences.get("target_role") or candidate_profile.get("target_role") or "",
+            "LocationName": preferences.get("location") or candidate_profile.get("location") or "",
+            "ResultsPerPage": 25,
+        }
+        headers = {
+            "Host": "data.usajobs.gov",
+            "User-Agent": self.user_agent,
+            "Authorization-Key": self.api_key,
+        }
+        try:
+            response = self.http_client.get(self.endpoint, headers=headers, params=params, timeout=self.timeout)
+            response.raise_for_status()
+            payload = response.json()
+        except httpx.TimeoutException as exc:
+            raise ProviderFailure("USAJOBS request timed out.") from exc
+        except Exception as exc:
+            raise ProviderFailure("USAJOBS provider failed.") from exc
+        items = payload.get("SearchResult", {}).get("SearchResultItems", [])
+        return [normalize_usajobs_item(item, current_utc().isoformat()) for item in items]
+
+
+def normalize_usajobs_item(item: dict[str, Any], discovered_at: str) -> dict[str, Any]:
+    descriptor = item.get("MatchedObjectDescriptor", {}) or {}
+    locations = descriptor.get("PositionLocation", []) or []
+    location = descriptor.get("PositionLocationDisplay") or ""
+    if not location and locations:
+        first_location = locations[0] or {}
+        city = first_location.get("CityName", "")
+        state = first_location.get("CountrySubDivisionCode", "")
+        location = ", ".join(part for part in (city, state) if part)
+    remuneration = (descriptor.get("PositionRemuneration", []) or [{}])[0] or {}
+    user_area = descriptor.get("UserArea", {}) or {}
+    details = user_area.get("Details", {}) or {}
+    job = {
+        "source": "usajobs",
+        "source_job_id": str(item.get("MatchedObjectId") or descriptor.get("PositionID") or ""),
+        "company": descriptor.get("OrganizationName", "USAJOBS"),
+        "title": descriptor.get("PositionTitle", ""),
+        "location": location or "Not listed",
+        "remote_type": "remote" if descriptor.get("TeleworkEligible") else "onsite",
+        "salary_min": parse_int(remuneration.get("MinimumRange")),
+        "salary_max": parse_int(remuneration.get("MaximumRange")),
+        "employment_type": ", ".join(descriptor.get("PositionSchedule", []) or []),
+        "schedule": ", ".join(descriptor.get("PositionOfferingType", []) or []),
+        "description": " ".join(
+            part
+            for part in (
+                descriptor.get("QualificationSummary", ""),
+                details.get("JobSummary", ""),
+            )
+            if part
+        ).strip(),
+        "posted_at": descriptor.get("PublicationStartDate", ""),
+        "discovered_at": discovered_at,
+        "apply_url": descriptor.get("PositionURI", ""),
+        "expires_at": descriptor.get("ApplicationCloseDate", ""),
+        "expiration_status": "active",
+        "provider_confidence": 95,
+    }
+    job["normalized_key"] = normalized_job_key(job)
+    return job
+
+
+def build_manual_job(data: dict[str, Any], discovered_at: str | None = None) -> dict[str, Any]:
+    title = str(data.get("title", "")).strip()
+    company = str(data.get("company", "")).strip()
+    description = str(data.get("description", "")).strip()
+    if not title or not company or not description:
+        raise ValueError("Manual job imports require title, company, and description.")
+    apply_url = validate_public_job_url(str(data.get("apply_url", "")).strip())
+    salary_min, salary_max = parse_salary_range(str(data.get("salary", "")))
+    posted_at = str(data.get("posted_at", "")).strip() or current_utc().isoformat()
+    source_job_id = hashlib.sha256("|".join([company, title, apply_url, description[:80]]).encode("utf-8")).hexdigest()[:16]
+    job = {
+        "source": "manual",
+        "source_job_id": f"manual-{source_job_id}",
+        "company": company,
+        "title": title,
+        "location": str(data.get("location", "")).strip(),
+        "remote_type": str(data.get("remote_type", "onsite")).strip() or "onsite",
+        "salary_min": salary_min,
+        "salary_max": salary_max,
+        "employment_type": str(data.get("employment_type", "")).strip(),
+        "schedule": str(data.get("schedule", "")).strip(),
+        "description": description,
+        "posted_at": posted_at,
+        "discovered_at": discovered_at or current_utc().isoformat(),
+        "apply_url": apply_url,
+        "expires_at": "",
+        "expiration_status": "unknown",
+        "provider_confidence": 70,
+    }
+    job["normalized_key"] = normalized_job_key(job)
+    return job
+
+
+def validate_public_job_url(url: str) -> str:
+    if not url:
+        return ""
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("Apply URL must be an http or https URL.")
+    host = (parsed.hostname or "").strip().lower()
+    if not host or host == "localhost" or host.endswith(".local"):
+        raise ValueError("Apply URL must use a public host.")
+    try:
+        ip = ipaddress.ip_address(host.strip("[]"))
+    except ValueError:
+        ip = None
+    if ip and (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast):
+        raise ValueError("Apply URL cannot point to a private or local address.")
+    return url
+
+
+def calculate_next_check_at(interval_key: str, from_time: datetime | None = None) -> str:
+    start = from_time or current_utc()
+    return (start + SCHEDULE_INTERVALS.get(interval_key, SCHEDULE_INTERVALS["daily"])).isoformat()
 
 
 def extract_candidate_profile(client: dict[str, Any]) -> dict[str, Any]:
@@ -433,6 +618,24 @@ def salary_fit(job: dict[str, Any], preferences: dict[str, Any]) -> int:
         return 85
     salary = job.get("salary_max") or job.get("salary_min") or 0
     return 100 if salary >= minimum else max(0, round((salary / minimum) * 100))
+
+
+def parse_salary_range(value: str) -> tuple[int | None, int | None]:
+    numbers = [int(match.replace(",", "")) for match in re.findall(r"\d[\d,]*", value or "")]
+    if not numbers:
+        return None, None
+    if len(numbers) == 1:
+        return numbers[0], numbers[0]
+    return min(numbers[:2]), max(numbers[:2])
+
+
+def parse_int(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(float(str(value).replace(",", "")))
+    except ValueError:
+        return None
 
 
 def freshness_score(job: dict[str, Any]) -> int:

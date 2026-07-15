@@ -1,6 +1,6 @@
-# Fresh Job Finder MVP
+# Fresh Job Finder
 
-ResumeForge `0.10.0-dev` adds Phase 1 of Fresh Job Finder: a user-controlled job discovery workspace.
+ResumeForge `0.11.0-dev` includes Fresh Job Finder Phase 1 and Phase 2: a user-controlled job discovery workspace with deterministic testing, optional permitted providers, manual imports, alerts, and scheduled-check settings.
 
 ## Included
 
@@ -8,11 +8,17 @@ ResumeForge `0.10.0-dev` adds Phase 1 of Fresh Job Finder: a user-controlled job
 - Candidate profile extraction from resume/intake data
 - Modular job source provider interface
 - Deterministic mock provider for local testing
+- Optional USAJOBS provider adapter using the official API
+- Provider status/settings page
+- Manual job imports with public URL validation
 - Freshness filtering
 - Duplicate detection
+- New/seen/updated/expired discovery state support
 - Transparent 0-100 match score breakdown
 - Ranked job cards
 - Save, dismiss, prepare application, and status tracking
+- In-app alerts with read state
+- Schedule settings and overlap-prevention hooks
 - Review-only application package drafts
 
 ## Not Included
@@ -23,6 +29,7 @@ ResumeForge `0.10.0-dev` adds Phase 1 of Fresh Job Finder: a user-controlled job
 - No external credential storage
 - No scraping of LinkedIn, Indeed, or other sites in ways that may violate terms
 - No fabricated resume facts
+- No internet-dependent tests
 
 ## Job Preferences
 
@@ -54,7 +61,7 @@ The score is based on skill match, title similarity, experience fit, certificati
 
 ## Database Tables
 
-Phase 1 adds additive tables:
+Fresh Job Finder adds additive tables:
 
 - `job_search_profiles`
 - `discovered_jobs`
@@ -62,7 +69,17 @@ Phase 1 adds additive tables:
 - `saved_jobs`
 - `application_packages`
 - `job_search_runs`
+- `job_providers`
+- `job_provider_settings`
+- `job_alerts`
+- `job_schedule_settings`
+- `provider_run_logs`
+- `imported_jobs`
 
-## Recommended Next Phase
+## Provider Setup
 
-Add opt-in real providers with terms-safe integrations, manual import improvements, richer distance/location handling, and scheduled checks through a background worker.
+See `docs/JOB_PROVIDER_SETUP.md`.
+
+## Scheduler
+
+See `docs/SCHEDULER.md`. Phase 2 stores schedule settings and prevents overlapping checks, but does not require a background worker yet.

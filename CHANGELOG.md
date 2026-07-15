@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.11.0-dev - Unreleased
+
+- Added Phase 2 Fresh Job Finder provider settings with deterministic mock provider retained as the default.
+- Added optional USAJOBS provider adapter using the official API and graceful missing-credential handling.
+- Added manual job imports with public URL validation and SSRF protections for local/private addresses.
+- Added schedule settings, overlap-prevention repository hooks, provider run logs, provider alerts, and read/unread alert state.
+- Added new/seen/updated discovery state handling for fresh and changed postings.
+- Added additive SQLite tables for job providers, provider settings, alerts, schedule settings, run logs, and imported jobs.
+- Added documentation for permitted provider setup and scheduler behavior.
+
 ## 0.10.0-dev - Unreleased
 
 - Added Fresh Job Finder MVP for user-controlled job discovery and ranking.

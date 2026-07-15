@@ -88,11 +88,161 @@ class FreshJobsRepository:
             conn.commit()
             return int(cursor.lastrowid)
 
+    def provider_rows(self) -> list[dict[str, Any]]:
+        with get_connection() as conn:
+            rows = conn.execute("SELECT * FROM job_providers ORDER BY provider_key").fetchall()
+        return [dict(row) for row in rows]
+
+    def upsert_provider(self, provider_key: str, label: str, enabled: bool, status: str = "not_configured", last_error: str = "") -> None:
+        with get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO job_providers (provider_key, label, enabled, status, last_error)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(provider_key)
+                DO UPDATE SET label = excluded.label, enabled = excluded.enabled,
+                    status = excluded.status, last_error = excluded.last_error, updated_at = CURRENT_TIMESTAMP
+                """,
+                (provider_key, label, int(enabled), status, last_error[:240]),
+            )
+            conn.commit()
+
+    def update_provider_status(self, provider_key: str, status: str, last_error: str = "") -> None:
+        with get_connection() as conn:
+            conn.execute(
+                "UPDATE job_providers SET status = ?, last_error = ?, updated_at = CURRENT_TIMESTAMP WHERE provider_key = ?",
+                (status, last_error[:240], provider_key),
+            )
+            conn.commit()
+
+    def set_provider_enabled(self, provider_key: str, enabled: bool) -> None:
+        with get_connection() as conn:
+            conn.execute(
+                "UPDATE job_providers SET enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE provider_key = ?",
+                (int(enabled), provider_key),
+            )
+            conn.commit()
+
+    def log_provider_run(
+        self,
+        client_id: int | None,
+        provider_key: str,
+        status: str,
+        jobs_found: int = 0,
+        new_jobs: int = 0,
+        updated_jobs: int = 0,
+        error_count: int = 0,
+        message: str = "",
+        finished_at: str = "",
+    ) -> int:
+        with get_connection() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO provider_run_logs (
+                    client_id, provider_key, status, jobs_found, new_jobs, updated_jobs, error_count, message, finished_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (client_id, provider_key, status, jobs_found, new_jobs, updated_jobs, error_count, message[:500], finished_at),
+            )
+            conn.commit()
+            return int(cursor.lastrowid)
+
+    def create_alert(self, client_id: int | None, alert_type: str, message: str, related_job_id: int | None = None, provider_key: str = "") -> int:
+        with get_connection() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO job_alerts (client_id, alert_type, message, related_job_id, provider_key)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (client_id, alert_type, message[:500], related_job_id, provider_key),
+            )
+            conn.commit()
+            return int(cursor.lastrowid)
+
+    def list_alerts(self, client_id: int | None = None, include_read: bool = False) -> list[dict[str, Any]]:
+        sql = "SELECT * FROM job_alerts WHERE 1=1"
+        params: list[Any] = []
+        if client_id is not None:
+            sql += " AND (client_id = ? OR client_id IS NULL)"
+            params.append(client_id)
+        if not include_read:
+            sql += " AND is_read = 0"
+        sql += " ORDER BY id DESC LIMIT 25"
+        with get_connection() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [dict(row) for row in rows]
+
+    def mark_alert_read(self, alert_id: int) -> None:
+        with get_connection() as conn:
+            conn.execute("UPDATE job_alerts SET is_read = 1 WHERE id = ?", (alert_id,))
+            conn.commit()
+
+    def get_schedule(self) -> dict[str, Any]:
+        with get_connection() as conn:
+            row = conn.execute("SELECT * FROM job_schedule_settings WHERE id = 1").fetchone()
+        return dict(row) if row else {"enabled": 0, "interval_key": "daily", "running": 0}
+
+    def save_schedule(self, enabled: bool, interval_key: str, next_check_at: str) -> None:
+        with get_connection() as conn:
+            conn.execute(
+                """
+                UPDATE job_schedule_settings
+                SET enabled = ?, interval_key = ?, next_check_at = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = 1
+                """,
+                (int(enabled), interval_key, next_check_at),
+            )
+            conn.commit()
+
+    def begin_scheduled_run(self) -> bool:
+        with get_connection() as conn:
+            cursor = conn.execute("UPDATE job_schedule_settings SET running = 1 WHERE id = 1 AND running = 0")
+            conn.commit()
+            return cursor.rowcount == 1
+
+    def finish_scheduled_run(self, checked_at: str, next_check_at: str) -> None:
+        with get_connection() as conn:
+            conn.execute(
+                """
+                UPDATE job_schedule_settings
+                SET running = 0, last_checked_at = ?, next_check_at = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = 1
+                """,
+                (checked_at, next_check_at),
+            )
+            conn.commit()
+
     def insert_job(self, job: dict[str, Any]) -> int:
+        return self.insert_job_with_state(job)[0]
+
+    def insert_job_with_state(self, job: dict[str, Any]) -> tuple[int, str]:
         fields = serialize_job(job)
         duplicate = self.find_duplicate(fields)
         if duplicate:
-            return int(duplicate["id"])
+            state = "seen"
+            if job_changed(duplicate, fields):
+                state = "updated"
+                with get_connection() as conn:
+                    conn.execute(
+                        """
+                        UPDATE discovered_jobs SET
+                            description = ?, salary_min = ?, salary_max = ?, posted_at = ?,
+                            expiration_status = ?, raw_payload = ?, discovery_state = 'updated',
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                        """,
+                        (
+                            fields["description"],
+                            fields["salary_min"],
+                            fields["salary_max"],
+                            fields["posted_at"],
+                            fields["expiration_status"],
+                            fields["raw_payload"],
+                            duplicate["id"],
+                        ),
+                    )
+                    conn.commit()
+            return int(duplicate["id"]), state
         with get_connection() as conn:
             cursor = conn.execute(
                 """
@@ -109,7 +259,7 @@ class FreshJobsRepository:
                 fields,
             )
             conn.commit()
-            return int(cursor.lastrowid)
+            return int(cursor.lastrowid), "new"
 
     def find_duplicate(self, fields: dict[str, Any]) -> dict[str, Any] | None:
         with get_connection() as conn:
@@ -237,6 +387,30 @@ class FreshJobsRepository:
             package["ats_keywords"] = []
         return package
 
+    def create_imported_job(self, client_id: int, job: dict[str, Any], source_url: str = "", salary: str = "") -> int:
+        job_id, _ = self.insert_job_with_state(job)
+        with get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO imported_jobs (
+                    client_id, discovered_job_id, source_url, title, company, location, salary, posted_at, description
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    client_id,
+                    job_id,
+                    source_url,
+                    job.get("title", ""),
+                    job.get("company", ""),
+                    job.get("location", ""),
+                    salary,
+                    job.get("posted_at", ""),
+                    job.get("description", ""),
+                ),
+            )
+            conn.commit()
+        return job_id
+
 
 def serialize_profile(client_id: int, data: dict[str, Any]) -> dict[str, Any]:
     return {
@@ -282,7 +456,17 @@ def serialize_job(job: dict[str, Any]) -> dict[str, Any]:
         "expiration_status": job.get("expiration_status", "unknown"),
         "raw_payload": json.dumps(job),
         "normalized_key": job.get("normalized_key", ""),
+        "discovery_state": job.get("discovery_state", "new"),
+        "provider_confidence": int(job.get("provider_confidence") or 80),
+        "duplicate_confidence": int(job.get("duplicate_confidence") or 100),
     }
+
+
+def job_changed(existing: dict[str, Any], fields: dict[str, Any]) -> bool:
+    return any(
+        str(existing.get(key) or "") != str(fields.get(key) or "")
+        for key in ("description", "salary_min", "salary_max", "posted_at", "expiration_status")
+    )
 
 
 def parse_job_match(row: dict[str, Any]) -> dict[str, Any]:
