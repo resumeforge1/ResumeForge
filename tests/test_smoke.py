@@ -16,7 +16,7 @@ def test_health_check_reports_release_status(qa_app):
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ok"
-    assert data["version"] == "0.3.1"
+    assert data["version"] == "0.10.0-dev"
     assert data["database"]["ok"] is True
     assert data["templates"]["count"] >= 8
 

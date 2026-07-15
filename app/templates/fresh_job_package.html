@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Application Draft - ResumeForge{% endblock %}
+{% block content %}
+<section class="hero">
+  <div>
+    <p class="eyebrow">Review Required</p>
+    <h1>{{ job.title }}</h1>
+    <p>{{ job.company }} • {{ job.location }} • Status: {{ status }}</p>
+  </div>
+  <a class="button secondary" href="/fresh-jobs?client_id={{ client.id }}">Back to Fresh Jobs</a>
+</section>
+
+{% if not package %}
+<section class="panel">
+  <h2>No package draft found</h2>
+  <p>Prepare the application from the Fresh Jobs page to create review-ready drafts.</p>
+</section>
+{% else %}
+<section class="grid two">
+  <article class="panel">
+    <p class="eyebrow">ATS Keywords</p>
+    <h2>Keyword Summary</h2>
+    <div class="tag-list">
+      {% for keyword in package.ats_keywords %}
+      <span>{{ keyword }}</span>
+      {% endfor %}
+    </div>
+  </article>
+  <article class="panel">
+    <p class="eyebrow">Guardrails</p>
+    <h2>User stays in control</h2>
+    <p>No application has been submitted. Review every draft before exporting or applying.</p>
+  </article>
+</section>
+
+<section class="panel">
+  <p class="eyebrow">Cover Letter Draft</p>
+  <pre class="document-preview">{{ package.cover_letter }}</pre>
+</section>
+
+<section class="panel">
+  <p class="eyebrow">Tailored Resume Draft</p>
+  <h2>{{ package.tailored_resume.full_name }}</h2>
+  <p>{{ package.tailored_resume.professional_summary }}</p>
+  <div class="tag-list">
+    {% for skill in package.tailored_resume.skills %}
+    <span>{{ skill }}</span>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endblock %}

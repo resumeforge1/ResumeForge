@@ -17,9 +17,20 @@ from app.database import DB_PATH, get_connection, init_db, list_clients, save_cl
 from app.document_generator import OUTPUT_DIR, generate_output, generate_outputs, render_resume_html
 from app.repositories.application_repository import ApplicationRepository
 from app.repositories.client_repository import ClientRepository
+from app.repositories.fresh_jobs_repository import FreshJobsRepository
 from app.repositories.settings_repository import SettingsRepository
 from app.sample_data import SAMPLE_ALFREDO_CRUZ_CDL
 from app.services.dashboard_service import client_timeline, dashboard_stats, generated_files_for_client
+from app.services.fresh_jobs import (
+    MockJobProvider,
+    current_utc,
+    deduplicate_jobs,
+    extract_candidate_profile,
+    filter_by_freshness,
+    posting_age,
+    prepare_application_package,
+    score_job,
+)
 from app.services.import_engine import extract_resume
 from app.services.job_analyzer import analyze_job_description
 from app.services.plugin_service import discover_plugins
@@ -38,7 +49,9 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), na
 app.mount("/outputs", StaticFiles(directory=str(OUTPUT_DIR)), name="outputs")
 client_repo = ClientRepository()
 application_repo = ApplicationRepository()
+fresh_jobs_repo = FreshJobsRepository()
 settings_repo = SettingsRepository()
+job_provider = MockJobProvider()
 
 
 @app.on_event("startup")
@@ -163,6 +176,125 @@ def create_sample_client() -> RedirectResponse:
 def seed_demo() -> RedirectResponse:
     client_id = seed_demo_data()
     return RedirectResponse(url=f"/clients/{client_id}", status_code=303)
+
+
+@app.get("/fresh-jobs", response_class=HTMLResponse)
+def fresh_jobs_page(
+    request: Request,
+    client_id: int | None = None,
+    freshness: str = "past_7_days",
+    sort: str = "best_match",
+) -> HTMLResponse:
+    client = client_repo.get(client_id) if client_id else first_available_client()
+    if client is None:
+        return templates.TemplateResponse(
+            "fresh_jobs.html",
+            {
+                "request": request,
+                "client": None,
+                "clients": client_repo.search("", include_archived=True),
+                "profile": None,
+                "candidate_profile": None,
+                "jobs": [],
+                "freshness": freshness,
+                "sort": sort,
+                "message": "",
+            },
+        )
+    profile = fresh_jobs_repo.get_profile(int(client["id"])) or default_job_search_profile(client)
+    jobs = [enrich_fresh_job(job) for job in fresh_jobs_repo.list_matches(int(client["id"]), sort=sort)]
+    jobs = filter_by_freshness(jobs, freshness)
+    return templates.TemplateResponse(
+        "fresh_jobs.html",
+        {
+            "request": request,
+            "client": client,
+            "clients": client_repo.search("", include_archived=True),
+            "profile": profile,
+            "candidate_profile": extract_candidate_profile(client),
+            "jobs": jobs,
+            "freshness": freshness,
+            "sort": sort,
+            "message": request.query_params.get("message", ""),
+        },
+    )
+
+
+@app.post("/fresh-jobs/preferences")
+async def save_fresh_job_preferences(request: Request) -> RedirectResponse:
+    form = await request.form()
+    client_id = int(form.get("client_id", 0))
+    client = require_client(client_id)
+    fresh_jobs_repo.save_profile(client_id, parse_fresh_job_preferences(form, client))
+    return RedirectResponse(url=f"/fresh-jobs?client_id={client_id}&message=Preferences saved", status_code=303)
+
+
+@app.post("/fresh-jobs/check")
+async def check_fresh_jobs(request: Request) -> RedirectResponse:
+    form = await request.form()
+    client_id = int(form.get("client_id", 0))
+    client = require_client(client_id)
+    profile = fresh_jobs_repo.get_profile(client_id) or default_job_search_profile(client)
+    candidate_profile = extract_candidate_profile(client)
+    raw_jobs = job_provider.fetch_jobs(profile, candidate_profile)
+    fresh_jobs = filter_by_freshness(deduplicate_jobs(raw_jobs), str(form.get("freshness", "past_7_days")))
+    new_jobs = 0
+    for job in fresh_jobs:
+        job_id = fresh_jobs_repo.insert_job(job)
+        if fresh_jobs_repo.get_saved_status(client_id, job_id) == "discovered":
+            new_jobs += 1
+        fresh_jobs_repo.save_match(client_id, job_id, score_job(job, candidate_profile, profile))
+    checked_at = current_utc().isoformat()
+    fresh_jobs_repo.mark_checked(client_id, checked_at)
+    fresh_jobs_repo.create_run(client_id, job_provider.name, {"freshness": form.get("freshness", "past_7_days")}, len(fresh_jobs), new_jobs, checked_at)
+    return RedirectResponse(
+        url=f"/fresh-jobs?client_id={client_id}&freshness={form.get('freshness', 'past_7_days')}&message=Fresh jobs checked",
+        status_code=303,
+    )
+
+
+@app.post("/fresh-jobs/{job_id}/status")
+async def update_fresh_job_status(job_id: int, request: Request) -> RedirectResponse:
+    form = await request.form()
+    client_id = int(form.get("client_id", 0))
+    require_client(client_id)
+    status = str(form.get("status", "saved")).strip()
+    fresh_jobs_repo.set_job_status(client_id, job_id, status)
+    return RedirectResponse(url=f"/fresh-jobs?client_id={client_id}&message=Job {status}", status_code=303)
+
+
+@app.post("/fresh-jobs/{job_id}/prepare")
+async def prepare_fresh_job_application(job_id: int, request: Request) -> RedirectResponse:
+    form = await request.form()
+    client_id = int(form.get("client_id", 0))
+    client = require_client(client_id)
+    job = fresh_jobs_repo.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    match = score_job(job, extract_candidate_profile(client), fresh_jobs_repo.get_profile(client_id) or default_job_search_profile(client))
+    package = prepare_application_package(client, job, match)
+    fresh_jobs_repo.create_application_package(client_id, job_id, package)
+    fresh_jobs_repo.set_job_status(client_id, job_id, "preparing")
+    return RedirectResponse(url=f"/fresh-jobs/{job_id}/package?client_id={client_id}", status_code=303)
+
+
+@app.get("/fresh-jobs/{job_id}/package", response_class=HTMLResponse)
+def fresh_job_package_page(request: Request, job_id: int, client_id: int) -> HTMLResponse:
+    client = require_client(client_id)
+    job = fresh_jobs_repo.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    package = fresh_jobs_repo.package_for_job(client_id, job_id)
+    return templates.TemplateResponse(
+        "fresh_job_package.html",
+        {
+            "request": request,
+            "client": client,
+            "job": job,
+            "package": package,
+            "status": fresh_jobs_repo.get_saved_status(client_id, job_id),
+        },
+    )
 
 
 @app.get("/clients/{client_id}", response_class=HTMLResponse)
@@ -370,6 +502,64 @@ def require_client(client_id: int) -> dict[str, Any]:
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found.")
     return client
+
+
+def first_available_client() -> dict[str, Any] | None:
+    clients = client_repo.search("", include_archived=True)
+    if not clients:
+        return None
+    return client_repo.get(int(clients[0]["id"]))
+
+
+def default_job_search_profile(client: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "client_id": client.get("id"),
+        "target_role": client.get("target_role", ""),
+        "location": client.get("city_state", ""),
+        "commute_radius": 25,
+        "remote_preference": "any",
+        "minimum_salary": 0,
+        "employment_type": "any",
+        "preferred_schedule": "",
+        "excluded_companies": [],
+        "required_licenses_certifications": client.get("certifications", []) or [],
+        "last_checked_at": "",
+    }
+
+
+def parse_fresh_job_preferences(form: Any, client: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "target_role": str(form.get("target_role", client.get("target_role", ""))).strip(),
+        "location": str(form.get("location", client.get("city_state", ""))).strip(),
+        "commute_radius": int(form.get("commute_radius") or 25),
+        "remote_preference": str(form.get("remote_preference", "any")).strip(),
+        "minimum_salary": int(form.get("minimum_salary") or 0),
+        "employment_type": str(form.get("employment_type", "any")).strip(),
+        "preferred_schedule": str(form.get("preferred_schedule", "")).strip(),
+        "excluded_companies": split_inline_values(str(form.get("excluded_companies", ""))),
+        "required_licenses_certifications": split_inline_values(str(form.get("required_licenses_certifications", ""))),
+    }
+
+
+def split_inline_values(value: str) -> list[str]:
+    normalized = value.replace("|", "\n").replace(",", "\n")
+    return [line.strip(" -\t") for line in normalized.splitlines() if line.strip(" -\t")]
+
+
+def enrich_fresh_job(job: dict[str, Any]) -> dict[str, Any]:
+    enriched = dict(job)
+    enriched["posting_age"] = posting_age(str(job.get("posted_at", "")))
+    salary_min = job.get("salary_min") or 0
+    salary_max = job.get("salary_max") or 0
+    if salary_min and salary_max:
+        enriched["salary_label"] = f"${int(salary_min):,} - ${int(salary_max):,}"
+    elif salary_max:
+        enriched["salary_label"] = f"Up to ${int(salary_max):,}"
+    elif salary_min:
+        enriched["salary_label"] = f"From ${int(salary_min):,}"
+    else:
+        enriched["salary_label"] = "Salary not listed"
+    return enriched
 
 
 def empty_client() -> dict[str, Any]:

@@ -111,6 +111,117 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS job_search_profiles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id INTEGER NOT NULL,
+                target_role TEXT,
+                location TEXT,
+                commute_radius INTEGER DEFAULT 25,
+                remote_preference TEXT DEFAULT 'any',
+                minimum_salary INTEGER DEFAULT 0,
+                employment_type TEXT DEFAULT 'any',
+                preferred_schedule TEXT DEFAULT '',
+                excluded_companies TEXT DEFAULT '[]',
+                required_licenses_certifications TEXT DEFAULT '[]',
+                last_checked_at TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(client_id) REFERENCES clients(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS discovered_jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source TEXT NOT NULL,
+                source_job_id TEXT NOT NULL,
+                company TEXT NOT NULL,
+                title TEXT NOT NULL,
+                location TEXT,
+                remote_type TEXT DEFAULT 'onsite',
+                salary_min INTEGER,
+                salary_max INTEGER,
+                employment_type TEXT,
+                schedule TEXT,
+                description TEXT,
+                posted_at TEXT,
+                discovered_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                apply_url TEXT,
+                expires_at TEXT,
+                expiration_status TEXT DEFAULT 'unknown',
+                raw_payload TEXT DEFAULT '{}',
+                normalized_key TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS job_matches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id INTEGER NOT NULL,
+                discovered_job_id INTEGER NOT NULL,
+                score INTEGER NOT NULL,
+                breakdown TEXT NOT NULL,
+                matched_skills TEXT DEFAULT '[]',
+                missing_qualifications TEXT DEFAULT '[]',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(client_id) REFERENCES clients(id),
+                FOREIGN KEY(discovered_job_id) REFERENCES discovered_jobs(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS saved_jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id INTEGER NOT NULL,
+                discovered_job_id INTEGER NOT NULL,
+                status TEXT DEFAULT 'saved',
+                notes TEXT DEFAULT '',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(client_id, discovered_job_id),
+                FOREIGN KEY(client_id) REFERENCES clients(id),
+                FOREIGN KEY(discovered_job_id) REFERENCES discovered_jobs(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS application_packages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id INTEGER NOT NULL,
+                discovered_job_id INTEGER NOT NULL,
+                tailored_resume TEXT NOT NULL,
+                cover_letter TEXT NOT NULL,
+                ats_keywords TEXT DEFAULT '[]',
+                status TEXT DEFAULT 'draft',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(client_id) REFERENCES clients(id),
+                FOREIGN KEY(discovered_job_id) REFERENCES discovered_jobs(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS job_search_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id INTEGER NOT NULL,
+                provider TEXT NOT NULL,
+                filters TEXT DEFAULT '{}',
+                jobs_found INTEGER DEFAULT 0,
+                new_jobs INTEGER DEFAULT 0,
+                last_checked_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(client_id) REFERENCES clients(id)
+            )
+            """
+        )
         conn.commit()
 
 

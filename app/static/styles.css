@@ -448,6 +448,69 @@ select {
   padding: 7px 9px;
 }
 
+.fresh-job-list {
+  display: grid;
+  gap: 18px;
+}
+
+.fresh-job-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  padding: 22px;
+}
+
+.fresh-job-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+}
+
+.score-badge {
+  align-items: center;
+  background: var(--blue);
+  color: #ffffff;
+  display: inline-flex;
+  font-size: 22px;
+  font-weight: 900;
+  height: 58px;
+  justify-content: center;
+  min-width: 58px;
+}
+
+.score-bar {
+  background: var(--line);
+  height: 9px;
+  margin: 16px 0;
+  overflow: hidden;
+}
+
+.score-bar span {
+  background: var(--blue);
+  display: block;
+  height: 100%;
+}
+
+.mini-metric {
+  background: #f5f8fb;
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 12px;
+}
+
+.grid.compact {
+  gap: 8px;
+}
+
+.document-preview {
+  background: #f5f8fb;
+  border: 1px solid var(--line);
+  overflow-x: auto;
+  padding: 18px;
+  white-space: pre-wrap;
+}
+
 @media (max-width: 800px) {
   .app-shell {
     grid-template-columns: 1fr;

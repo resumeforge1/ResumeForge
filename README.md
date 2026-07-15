@@ -1,12 +1,15 @@
 # ResumeForge
 
-ResumeForge is a full-stack MVP for generating client resume packages from a single intake form.
+ResumeForge is a full-stack resume workflow app for generating client resume packages from intake data and preparing user-reviewed job applications.
+
+Current version: **0.10.0-dev**
 
 It creates:
 
 - ATS-friendly resume DOCX
 - Premium styled resume PDF
 - Cover letter DOCX
+- Fresh job matches for review
 
 ## Tech Stack
 
@@ -108,6 +111,21 @@ ResumeForge now includes modular foundations for:
 - Settings for accent color, fonts, header style, spacing, margins, section order, and branding
 - Plugin discovery from `plugins/*/plugin.json`
 - Provider abstraction for OpenAI, Anthropic, Gemini, Ollama, and mock provider
+- Fresh Job Finder with deterministic mock provider, freshness filters, transparent match scoring, and review-only application drafts
+
+## Fresh Job Finder
+
+The Fresh Job Finder page at `/fresh-jobs` lets users:
+
+- Store job preferences
+- Extract a candidate profile from saved resume data
+- Manually check for deterministic mock jobs
+- Filter jobs by posting freshness
+- Review transparent 0-100 match score breakdowns
+- Save or dismiss jobs
+- Prepare application drafts for review
+
+It does not scrape third-party job sites, bypass CAPTCHA, store external credentials, submit applications, or auto-apply.
 
 ## Exports
 

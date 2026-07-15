@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Fresh Jobs - ResumeForge{% endblock %}
+{% block content %}
+<section class="hero">
+  <div>
+    <p class="eyebrow">Fresh Job Finder</p>
+    <h1>Rank newly posted jobs before you apply</h1>
+    <p>Check deterministic provider results, review match breakdowns, and prepare drafts without submitting anything automatically.</p>
+  </div>
+  {% if message %}<strong class="pill">{{ message }}</strong>{% endif %}
+</section>
+
+{% if not client %}
+<section class="panel">
+  <h2>No client selected</h2>
+  <p>Create or import a resume before checking fresh jobs.</p>
+  <a class="button primary" href="/clients/new">Create Client</a>
+</section>
+{% else %}
+<section class="grid two">
+  <form class="panel" method="post" action="/fresh-jobs/preferences">
+    <input type="hidden" name="client_id" value="{{ client.id }}">
+    <p class="eyebrow">Job Preferences</p>
+    <h2>{{ client.full_name }}</h2>
+    <label>Target role<input name="target_role" value="{{ profile.target_role }}"></label>
+    <label>Location<input name="location" value="{{ profile.location }}"></label>
+    <div class="grid two compact">
+      <label>Commute radius<input type="number" name="commute_radius" value="{{ profile.commute_radius }}"></label>
+      <label>Minimum salary<input type="number" name="minimum_salary" value="{{ profile.minimum_salary }}"></label>
+    </div>
+    <div class="grid two compact">
+      <label>Remote preference
+        <select name="remote_preference">
+          {% for option in ["any", "onsite", "hybrid", "remote"] %}
+          <option value="{{ option }}" {% if profile.remote_preference == option %}selected{% endif %}>{{ option|title }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Employment type
+        <select name="employment_type">
+          {% for option in ["any", "Full-time", "Part-time", "Contract"] %}
+          <option value="{{ option }}" {% if profile.employment_type == option %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+    <label>Preferred schedule<input name="preferred_schedule" value="{{ profile.preferred_schedule }}"></label>
+    <label>Excluded companies<textarea name="excluded_companies">{{ profile.excluded_companies|join(", ") }}</textarea></label>
+    <label>Required licenses/certifications<textarea name="required_licenses_certifications">{{ profile.required_licenses_certifications|join(", ") }}</textarea></label>
+    <button class="button primary" type="submit">Save Preferences</button>
+  </form>
+
+  <div class="panel">
+    <p class="eyebrow">Candidate Profile</p>
+    <h2>Extracted from resume</h2>
+    <p><strong>Years experience:</strong> {{ candidate_profile.years_experience }}</p>
+    <p><strong>Location:</strong> {{ candidate_profile.location or "Not set" }}</p>
+    <p><strong>Industries:</strong> {{ candidate_profile.industries|join(", ") or "General" }}</p>
+    <div class="tag-list">
+      {% for skill in candidate_profile.skills[:12] %}
+      <span>{{ skill }}</span>
+      {% endfor %}
+    </div>
+    <form method="post" action="/fresh-jobs/check" class="actions">
+      <input type="hidden" name="client_id" value="{{ client.id }}">
+      <select name="freshness">
+        {% for value, label in [("past_2_hours", "Past 2 hours"), ("today", "Today"), ("past_24_hours", "Past 24 hours"), ("past_3_days", "Past 3 days"), ("past_7_days", "Past 7 days")] %}
+        <option value="{{ value }}" {% if freshness == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <button class="button primary" type="submit">Check for New Jobs</button>
+    </form>
+    <p class="muted">Last checked: {{ profile.last_checked_at or "Not checked yet" }}</p>
+  </div>
+</section>
+
+<section class="panel">
+  <form method="get" action="/fresh-jobs" class="actions">
+    <input type="hidden" name="client_id" value="{{ client.id }}">
+    <label>Freshness
+      <select name="freshness">
+        {% for value, label in [("past_2_hours", "Past 2 hours"), ("today", "Today"), ("past_24_hours", "Past 24 hours"), ("past_3_days", "Past 3 days"), ("past_7_days", "Past 7 days")] %}
+        <option value="{{ value }}" {% if freshness == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Sort
+      <select name="sort">
+        {% for value, label in [("best_match", "Best match"), ("newest", "Newest"), ("highest_salary", "Highest salary")] %}
+        <option value="{{ value }}" {% if sort == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button class="button secondary" type="submit">Apply</button>
+  </form>
+</section>
+
+<section class="fresh-job-list">
+  {% for job in jobs %}
+  <article class="fresh-job-card">
+    <div class="fresh-job-head">
+      <div>
+        <p class="eyebrow">{{ job.source }} • {{ job.posting_age }}</p>
+        <h2>{{ job.title }}</h2>
+        <p>{{ job.company }} • {{ job.location }} • {{ job.salary_label }}</p>
+      </div>
+      <strong class="score-badge">{{ job.score }}</strong>
+    </div>
+    <div class="score-bar"><span style="width: {{ job.score }}%"></span></div>
+    <div class="grid two compact">
+      {% for label, value in job.breakdown.items() %}
+      <div class="mini-metric"><span>{{ label|replace("_", " ")|title }}</span><strong>{{ value }}</strong></div>
+      {% endfor %}
+    </div>
+    <p>{{ job.description }}</p>
+    <p><strong>Matched:</strong> {{ job.matched_skills|join(", ") or "None yet" }}</p>
+    <p><strong>Missing:</strong> {{ job.missing_qualifications|join(", ") or "No major gaps detected" }}</p>
+    <div class="actions">
+      <form method="post" action="/fresh-jobs/{{ job.id }}/status">
+        <input type="hidden" name="client_id" value="{{ client.id }}">
+        <input type="hidden" name="status" value="saved">
+        <button class="button primary" type="submit">Save</button>
+      </form>
+      <form method="post" action="/fresh-jobs/{{ job.id }}/status">
+        <input type="hidden" name="client_id" value="{{ client.id }}">
+        <input type="hidden" name="status" value="dismissed">
+        <button class="button secondary" type="submit">Dismiss</button>
+      </form>
+      <form method="post" action="/fresh-jobs/{{ job.id }}/prepare">
+        <input type="hidden" name="client_id" value="{{ client.id }}">
+        <button class="button primary" type="submit">Prepare Application</button>
+      </form>
+    </div>
+    <p class="muted">Status: {{ job.status }}</p>
+  </article>
+  {% else %}
+  <div class="panel">
+    <h2>No fresh jobs yet</h2>
+    <p>Save preferences, then run a manual check for new jobs.</p>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+{% endblock %}
